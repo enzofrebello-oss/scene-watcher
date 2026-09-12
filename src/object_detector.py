@@ -6,6 +6,7 @@ from typing import NamedTuple
 import cv2
 from ultralytics import YOLO
 from ultralytics.utils.downloads import attempt_download_asset
+from ultralytics.utils.events import events as ultralytics_events
 
 import config
 from src.utils.model_files import ensure_weights
@@ -17,6 +18,12 @@ from src.utils.model_files import ensure_weights
 # de um valor lido antes do import, funciona mesmo que outro módulo tenha importado
 # o ultralytics primeiro.
 cv2.setNumThreads(-1)
+
+# O ultralytics envia estatísticas anônimas de uso ao Google Analytics ao fim de cada
+# predict quando a configuração global sync está ativa, que é o padrão. O envio é
+# desligado só dentro deste processo, sem alterar as configurações do ultralytics na
+# máquina.
+ultralytics_events.enabled = False
 
 
 class Detection(NamedTuple):

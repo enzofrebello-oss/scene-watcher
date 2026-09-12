@@ -42,6 +42,12 @@ Os pesos ficam em `models/` e não são versionados:
 
 Na primeira execução, pesos ausentes são baixados automaticamente (é preciso internet uma única vez): o YOLOv8n pelo Ultralytics e o YuNet direto do OpenCV Zoo. O download é feito numa pasta temporária e o arquivo só vai para `models/` quando completo, então uma queda de conexão não deixa um peso corrompido. Se o download falhar, o app encerra explicando qual modelo faltou.
 
+## Telemetria do Ultralytics
+
+Por padrão, o ultralytics envia estatísticas anônimas de uso ao Google Analytics ao fim de cada detecção: versões das bibliotecas, modelo do processador, sistema operacional, nome do arquivo do modelo e tempos de inferência. Pelo código da biblioteca, nenhuma imagem, detecção ou caminho de arquivo é enviado.
+
+O Scene Watcher desliga esse envio dentro do próprio processo (`src/object_detector.py`), sem alterar a configuração global do ultralytics na máquina: outros usos do ultralytics continuam seguindo o que estiver em `yolo settings`.
+
 ## Detecção de rosto
 
 O COCO não tem uma classe de rosto, então os rostos vêm de um detector dedicado, o YuNet, rodando em paralelo ao YOLOv8n:
