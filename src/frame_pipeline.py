@@ -42,7 +42,7 @@ class CameraOpenError(RuntimeError):
 
 
 class CameraDisconnectedError(RuntimeError):
-    """A câmera parou de responder por mais tempo que a tolerância."""
+    """A câmera parou de responder, ou nunca respondeu, por mais tempo que a tolerância."""
 
 
 class CameraSource:
@@ -52,10 +52,13 @@ class CameraSource:
     o backend repete o frame anterior. Assim, "frame" significa sempre "frame novo"
     no resto do sistema, independente do backend.
 
-    A câmera só é considerada desconectada quando nenhuma leitura é bem-sucedida por
+    A câmera só é considerada sem resposta quando nenhuma leitura é bem-sucedida por
     `disconnect_timeout` segundos. Frames repetidos contam como leitura bem-sucedida,
     então uma cena totalmente estática (ex. lente tampada, com frames idênticos) não
-    é tratada como desconexão.
+    é tratada como desconexão. A mensagem do erro distingue dois casos: se nenhuma
+    imagem chegou desde a abertura, o mais provável é a câmera estar em uso por outro
+    aplicativo (no Windows ela abre normalmente, mas não entrega imagens); se imagens
+    chegaram e pararam, ela foi desconectada.
     """
 
     def __init__(
@@ -75,6 +78,7 @@ class CameraSource:
         self._clock = clock
         self._cap = None
         self._last_read_time = None
+        self._received_image = False
         self._previous_frame = None
 
     @property
@@ -109,6 +113,7 @@ class CameraSource:
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
         self._cap = cap
         self._last_read_time = self._clock()
+        self._received_image = False
         self._previous_frame = None
 
     def read(self):
@@ -126,9 +131,15 @@ class CameraSource:
         now = self._clock()
         if not ok or frame is None:
             if now - self._last_read_time >= self.disconnect_timeout:
+                if not self._received_image:
+                    raise CameraDisconnectedError(
+                        "a câmera abriu mas não entregou nenhuma imagem, verifique se ela "
+                        "está em uso por outro aplicativo"
+                    )
                 raise CameraDisconnectedError("câmera desconectada, verifique a conexão")
             return None
         self._last_read_time = now
+        self._received_image = True
         if self._is_repeat(frame):
             return None
         return frame
