@@ -3,11 +3,20 @@
 from pathlib import Path
 from typing import NamedTuple
 
+import cv2
 from ultralytics import YOLO
 from ultralytics.utils.downloads import attempt_download_asset
 
 import config
 from src.utils.model_files import ensure_weights
+
+# O import do ultralytics chama cv2.setNumThreads(0), deixando o OpenCV com uma única
+# thread no processo inteiro, para evitar conflito com o DataLoader do PyTorch no
+# treino. Aqui só há inferência, e com uma thread o OpenCV (YuNet, detecção de
+# movimento) fica 2 a 3 vezes mais lento. Restaurar o padrão do sistema (-1), em vez
+# de um valor lido antes do import, funciona mesmo que outro módulo tenha importado
+# o ultralytics primeiro.
+cv2.setNumThreads(-1)
 
 
 class Detection(NamedTuple):
