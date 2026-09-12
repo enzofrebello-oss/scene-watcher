@@ -40,6 +40,55 @@ Os pesos ficam em `models/` e não são versionados:
 - `models/yolov8n.pt`: YOLOv8n do Ultralytics.
 - `models/face_detection_yunet_2023mar.onnx`: YuNet, do [OpenCV Zoo](https://github.com/opencv/opencv_zoo/tree/main/models/face_detection_yunet).
 
+Na primeira execução, pesos ausentes são baixados automaticamente (é preciso internet uma única vez). O download é feito numa pasta temporária e o arquivo só vai para `models/` quando completo, então uma queda de conexão não deixa um peso corrompido. Se o download falhar, o app encerra explicando qual modelo faltou.
+
+## Classes detectadas
+
+O YOLOv8n detecta as 80 classes do COCO. Internamente (detecções, logs) cada classe é identificada pelo nome original do COCO; na interface e no overlay aparece a tradução abaixo, definida em `src/coco_labels.py`.
+
+| COCO | Interface | COCO | Interface |
+|---|---|---|---|
+| person | pessoa | elephant | elefante |
+| bicycle | bicicleta | bear | urso |
+| car | carro | zebra | zebra |
+| motorcycle | moto | giraffe | girafa |
+| airplane | avião | backpack | mochila |
+| bus | ônibus | umbrella | guarda-chuva |
+| train | trem | handbag | bolsa |
+| truck | caminhão | tie | gravata |
+| boat | barco | suitcase | mala |
+| traffic light | semáforo | frisbee | frisbee |
+| fire hydrant | hidrante | skis | esquis |
+| stop sign | placa de pare | snowboard | snowboard |
+| parking meter | parquímetro | sports ball | bola |
+| bench | banco | kite | pipa |
+| bird | pássaro | baseball bat | taco de beisebol |
+| cat | gato | baseball glove | luva de beisebol |
+| dog | cachorro | skateboard | skate |
+| horse | cavalo | surfboard | prancha de surfe |
+| sheep | ovelha | tennis racket | raquete de tênis |
+| cow | vaca | bottle | garrafa |
+| wine glass | taça | dining table | mesa |
+| cup | copo | toilet | vaso sanitário |
+| fork | garfo | tv | televisão |
+| knife | faca | laptop | notebook |
+| spoon | colher | mouse | mouse |
+| bowl | tigela | remote | controle remoto |
+| banana | banana | keyboard | teclado |
+| apple | maçã | cell phone | celular |
+| sandwich | sanduíche | microwave | micro-ondas |
+| orange | laranja | oven | forno |
+| broccoli | brócolis | toaster | torradeira |
+| carrot | cenoura | sink | pia |
+| hot dog | cachorro-quente | refrigerator | geladeira |
+| pizza | pizza | book | livro |
+| donut | rosquinha | clock | relógio |
+| cake | bolo | vase | vaso |
+| chair | cadeira | scissors | tesoura |
+| couch | sofá | teddy bear | ursinho de pelúcia |
+| potted plant | planta | hair drier | secador de cabelo |
+| bed | cama | toothbrush | escova de dentes |
+
 ## Caminhos com caracteres não-ASCII
 
 No Windows, algumas funções do OpenCV que abrem arquivos diretamente falham em pastas com acentos: `cv2.imwrite` retorna `False` sem gravar nada, e o carregamento de modelos ONNX por caminho (YuNet) não encontra o arquivo. O projeto contorna isso para funcionar em qualquer pasta:
@@ -62,6 +111,7 @@ scene-watcher/
 │   └── face_detection_yunet_2023mar.onnx
 ├── src/
 │   ├── object_detector.py
+│   ├── coco_labels.py           # tradução das 80 classes do COCO
 │   ├── face_detector.py
 │   ├── motion_detector.py
 │   ├── detection_tracker.py
