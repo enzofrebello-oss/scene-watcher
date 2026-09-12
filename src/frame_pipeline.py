@@ -5,10 +5,29 @@ uma QThread em `src/ui/pipeline_worker.py`.
 """
 
 import time
+from contextlib import contextmanager
 
 import cv2
 
 import config
+
+
+@contextmanager
+def _opencv_warnings_suppressed():
+    """Reduz o log do OpenCV a erros durante o bloco, restaurando o nível anterior depois.
+
+    Usado só na leitura da câmera: quando ela é desconectada, o backend do Windows
+    (MSMF) emite "can't grab frame" várias vezes por segundo até a tolerância de
+    desconexão estourar, e a mensagem de desconexão já explica o problema. Como o
+    nível de log do OpenCV é global, o escopo deve ser o menor possível.
+    """
+    log = cv2.utils.logging
+    previous = log.getLogLevel()
+    log.setLogLevel(min(previous, log.LOG_LEVEL_ERROR))
+    try:
+        yield
+    finally:
+        log.setLogLevel(previous)
 
 
 class CameraOpenError(RuntimeError):
@@ -80,7 +99,8 @@ class CameraSource:
         """
         if self._cap is None:
             raise RuntimeError("a câmera precisa ser aberta antes da leitura")
-        ok, frame = self._cap.read()
+        with _opencv_warnings_suppressed():
+            ok, frame = self._cap.read()
         now = self._clock()
         if ok and frame is not None:
             self._last_frame_time = now
