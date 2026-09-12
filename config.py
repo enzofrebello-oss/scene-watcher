@@ -22,6 +22,9 @@ MODELS_DIR = BASE_DIR / "models"
 CAMERA_INDEX = 0
 FRAME_WIDTH = 1280
 FRAME_HEIGHT = 720
+# Tempo sem nenhum frame válido a partir do qual a câmera é considerada
+# desconectada. Falhas de leitura isoladas dentro desse intervalo são toleradas.
+CAMERA_DISCONNECT_TIMEOUT_SECONDS = 2.0
 
 # --- Detecção de objetos (YOLOv8n) -----------------------------------------
 YOLO_MODEL_PATH = MODELS_DIR / "yolov8n.pt"
