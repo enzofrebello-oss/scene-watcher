@@ -39,6 +39,18 @@ YUNET_MODEL_URL = (
     "https://github.com/opencv/opencv_zoo/raw/main/models/"
     "face_detection_yunet/face_detection_yunet_2023mar.onnx"
 )
+# Tempo máximo sem resposta do servidor nos downloads de modelo por URL (YuNet).
+MODEL_DOWNLOAD_TIMEOUT_SECONDS = 60
+# Limiar próprio do rosto, separado do limiar de confiança dos objetos.
+FACE_SCORE_THRESHOLD = 0.8
+# Largura para a qual o frame é reduzido antes da detecção de rosto; as caixas voltam
+# para as coordenadas do frame original. Menor é mais rápido, mas rostos distantes
+# são os primeiros a deixar de ser detectados.
+FACE_DETECTION_INPUT_WIDTH = 640
+# Valores de referência do YuNet (OpenCV Zoo): limiar de sobreposição para descartar
+# caixas duplicadas e número máximo de candidatos considerados.
+FACE_NMS_THRESHOLD = 0.3
+FACE_TOP_K = 5000
 
 # --- Detecção de movimento --------------------------------------------------
 # Frames usados para aprender o fundo da cena antes de reportar movimento.

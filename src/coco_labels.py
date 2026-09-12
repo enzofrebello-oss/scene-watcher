@@ -1,7 +1,9 @@
-"""Tradução para português das 80 classes do COCO detectadas pelo YOLOv8n.
+"""Texto exibido na interface para cada classe detectada.
 
-As chaves são os nomes exatamente como o modelo os define; os valores são o texto
-exibido na interface, sempre em minúsculas.
+`COCO_LABELS_PT` traduz as 80 classes do COCO detectadas pelo YOLOv8n e
+`EXTRA_LABELS_PT` traduz classes que vêm de outros detectores, como o rosto do
+YuNet. As chaves são os identificadores usados internamente; os valores são o texto
+exibido, sempre em minúsculas.
 """
 
 COCO_LABELS_PT = {
@@ -87,7 +89,14 @@ COCO_LABELS_PT = {
     "toothbrush": "escova de dentes",
 }
 
+# Classes que não são do COCO, vindas de outros detectores.
+EXTRA_LABELS_PT = {
+    "face": "rosto",
+}
+
 
 def translate(class_name):
     """Texto exibido para uma classe; sem tradução conhecida, devolve o nome original."""
-    return COCO_LABELS_PT.get(class_name, class_name)
+    if class_name in COCO_LABELS_PT:
+        return COCO_LABELS_PT[class_name]
+    return EXTRA_LABELS_PT.get(class_name, class_name)

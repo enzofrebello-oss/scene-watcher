@@ -40,11 +40,20 @@ Os pesos ficam em `models/` e não são versionados:
 - `models/yolov8n.pt`: YOLOv8n do Ultralytics.
 - `models/face_detection_yunet_2023mar.onnx`: YuNet, do [OpenCV Zoo](https://github.com/opencv/opencv_zoo/tree/main/models/face_detection_yunet).
 
-Na primeira execução, pesos ausentes são baixados automaticamente (é preciso internet uma única vez). O download é feito numa pasta temporária e o arquivo só vai para `models/` quando completo, então uma queda de conexão não deixa um peso corrompido. Se o download falhar, o app encerra explicando qual modelo faltou.
+Na primeira execução, pesos ausentes são baixados automaticamente (é preciso internet uma única vez): o YOLOv8n pelo Ultralytics e o YuNet direto do OpenCV Zoo. O download é feito numa pasta temporária e o arquivo só vai para `models/` quando completo, então uma queda de conexão não deixa um peso corrompido. Se o download falhar, o app encerra explicando qual modelo faltou.
+
+## Detecção de rosto
+
+O COCO não tem uma classe de rosto, então os rostos vêm de um detector dedicado, o YuNet, rodando em paralelo ao YOLOv8n:
+
+- cada rosto é uma detecção no mesmo formato das de objetos, com a classe `face`, exibida como "rosto";
+- o limiar de score é próprio (`FACE_SCORE_THRESHOLD`, padrão 0.8), separado do limiar de confiança dos objetos;
+- o frame é reduzido para 640 px de largura (`FACE_DETECTION_INPUT_WIDTH`) antes da detecção, e as caixas voltam para as coordenadas do frame original. Na CPU, com frames 1280×720, isso custa cerca de 8 ms por frame, contra cerca de 30 ms na resolução cheia. Quanto menor essa largura, mais cedo rostos distantes deixam de ser detectados;
+- os pontos faciais (olhos, nariz, boca) que o YuNet também fornece são descartados.
 
 ## Classes detectadas
 
-O YOLOv8n detecta as 80 classes do COCO. Internamente (detecções, logs) cada classe é identificada pelo nome original do COCO; na interface e no overlay aparece a tradução abaixo, definida em `src/coco_labels.py`.
+O YOLOv8n detecta as 80 classes do COCO. Internamente (detecções, logs) cada classe é identificada pelo nome original do COCO; na interface e no overlay aparece a tradução abaixo, definida em `src/coco_labels.py`. O rosto, que vem do YuNet, usa o identificador `face` e aparece como "rosto".
 
 | COCO | Interface | COCO | Interface |
 |---|---|---|---|
@@ -121,7 +130,10 @@ scene-watcher/
 │   ├── alert_manager.py
 │   ├── clip_recorder.py
 │   ├── settings_store.py
-│   ├── utils/geometry.py
+│   ├── utils/
+│   │   ├── geometry.py
+│   │   ├── model_files.py       # garante os pesos, com download na primeira execução
+│   │   └── opencv_logging.py    # supressão pontual de avisos do OpenCV
 │   └── ui/
 │       ├── main_window.py
 │       ├── pipeline_worker.py   # QThread fina em volta do frame_pipeline

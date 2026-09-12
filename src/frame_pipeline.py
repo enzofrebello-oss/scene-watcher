@@ -6,35 +6,16 @@ uma QThread em `src/ui/pipeline_worker.py`.
 
 import sys
 import time
-from contextlib import contextmanager
 
 import cv2
 import numpy as np
 
 import config
+from src.utils.opencv_logging import opencv_warnings_suppressed
 
 # Passo da amostra esparsa de pixels comparada antes do frame inteiro ao procurar
 # frames repetidos; a comparação completa só acontece se a amostra for igual.
 _REPEAT_CHECK_STRIDE = 16
-
-
-@contextmanager
-def _opencv_warnings_suppressed():
-    """Reduz o log do OpenCV a erros durante o bloco, restaurando o nível anterior depois.
-
-    Usado na abertura e na leitura da câmera. Quando a câmera não abre, o MSMF avisa
-    que não consegue capturar pelo índice; quando ela é desconectada, emite
-    "can't grab frame" várias vezes por segundo até a tolerância estourar. Nos dois
-    casos a mensagem do app já explica o problema. Como o nível de log do OpenCV é
-    global, o escopo deve ser o menor possível.
-    """
-    log = cv2.utils.logging
-    previous = log.getLogLevel()
-    log.setLogLevel(min(previous, log.LOG_LEVEL_ERROR))
-    try:
-        yield
-    finally:
-        log.setLogLevel(previous)
 
 
 def _open_capture(index):
@@ -107,7 +88,9 @@ class CameraSource:
 
     def open(self):
         self.release()
-        with _opencv_warnings_suppressed():
+        # Quando a câmera não abre, o MSMF avisa que não consegue capturar pelo índice;
+        # a CameraOpenError já explica o problema.
+        with opencv_warnings_suppressed():
             cap = self._capture_factory(self.index)
             opened = cap.isOpened()
             if not opened:
@@ -131,7 +114,9 @@ class CameraSource:
         """
         if self._cap is None:
             raise RuntimeError("a câmera precisa ser aberta antes da leitura")
-        with _opencv_warnings_suppressed():
+        # Com a câmera desconectada, o MSMF emite "can't grab frame" várias vezes por
+        # segundo até a tolerância estourar; a CameraDisconnectedError já explica.
+        with opencv_warnings_suppressed():
             ok, frame = self._cap.read()
         now = self._clock()
         if not ok or frame is None:
