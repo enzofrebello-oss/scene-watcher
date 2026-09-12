@@ -6,11 +6,16 @@ uma QThread em `src/ui/pipeline_worker.py`.
 
 import sys
 import time
+from collections import deque
+from typing import NamedTuple
 
 import cv2
 import numpy as np
 
 import config
+from src.face_detector import FaceDetector
+from src.motion_detector import MotionDetector
+from src.object_detector import ObjectDetector
 from src.utils.opencv_logging import opencv_warnings_suppressed
 
 # Passo da amostra esparsa de pixels comparada antes do frame inteiro ao procurar
@@ -156,3 +161,103 @@ class CameraSource:
 
     def __exit__(self, exc_type, exc, tb):
         self.release()
+
+
+class FrameResult(NamedTuple):
+    frame: np.ndarray  # frame novo da câmera, sem nada desenhado
+    frame_index: int  # posição do frame desde a abertura da câmera, a partir de 0
+    motion_boxes: list  # caixas (x1, y1, x2, y2) das regiões em movimento
+    detections: list  # objetos (YOLOv8n) e rostos (YuNet), como Detection
+    detections_updated: bool  # True se os detectores de objetos e rostos rodaram neste frame
+    is_calibrating: bool  # True enquanto a detecção de movimento aprende o fundo
+    fps: float | None  # frames novos processados por segundo, com média móvel
+
+
+class FramePipeline:
+    """Câmera, detecção de movimento em todo frame novo e de objetos e rostos a cada N frames.
+
+    O YOLOv8n custa bem mais que a detecção de movimento, então objetos e rostos só são
+    detectados a cada `detection_interval` frames; nos intermediários, as últimas
+    detecções são reaproveitadas.
+    """
+
+    def __init__(
+        self,
+        source=None,
+        object_detector=None,
+        face_detector=None,
+        motion_detector=None,
+        detection_interval=config.DETECTION_FRAME_INTERVAL,
+        fps_window=config.FPS_AVERAGE_WINDOW_FRAMES,
+        clock=time.perf_counter,
+    ):
+        if detection_interval < 1:
+            raise ValueError(f"o intervalo de detecção deve ser pelo menos 1, recebido {detection_interval}")
+        self.source = source if source is not None else CameraSource()
+        self.object_detector = object_detector if object_detector is not None else ObjectDetector()
+        self.face_detector = face_detector if face_detector is not None else FaceDetector()
+        self.motion_detector = motion_detector if motion_detector is not None else MotionDetector()
+        self.detection_interval = detection_interval
+        self._clock = clock
+        self._frame_times = deque(maxlen=fps_window)
+        self._frame_index = 0
+        self._detections = []
+
+    @property
+    def fps(self):
+        """Frames novos processados por segundo nos últimos frames, ou `None` com menos de dois."""
+        if len(self._frame_times) < 2:
+            return None
+        elapsed = self._frame_times[-1] - self._frame_times[0]
+        return (len(self._frame_times) - 1) / elapsed if elapsed > 0 else None
+
+    def warm_up(self):
+        """Roda os detectores uma vez num frame vazio, antes de abrir a câmera.
+
+        A primeira inferência de cada modelo é bem mais lenta que as seguintes; assim o
+        primeiro frame real não paga essa inicialização.
+        """
+        blank = np.zeros((config.FRAME_HEIGHT, config.FRAME_WIDTH, 3), np.uint8)
+        self.object_detector.detect(blank)
+        self.face_detector.detect(blank)
+
+    def open(self):
+        self.source.open()
+        self._frame_index = 0
+        self._detections = []
+        self._frame_times.clear()
+
+    def close(self):
+        self.source.release()
+
+    def process_next(self):
+        """Lê e processa o próximo frame novo; devolve `FrameResult`, ou `None` se ainda não chegou um.
+
+        Repassa `CameraDisconnectedError` da câmera.
+        """
+        frame = self.source.read()
+        if frame is None:
+            return None
+        motion_boxes = self.motion_detector.detect(frame)
+        detections_updated = self._frame_index % self.detection_interval == 0
+        if detections_updated:
+            self._detections = self.object_detector.detect(frame) + self.face_detector.detect(frame)
+        self._frame_times.append(self._clock())
+        result = FrameResult(
+            frame=frame,
+            frame_index=self._frame_index,
+            motion_boxes=motion_boxes,
+            detections=list(self._detections),
+            detections_updated=detections_updated,
+            is_calibrating=self.motion_detector.is_calibrating,
+            fps=self.fps,
+        )
+        self._frame_index += 1
+        return result
+
+    def __enter__(self):
+        self.open()
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        self.close()

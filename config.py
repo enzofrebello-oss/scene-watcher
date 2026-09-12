@@ -29,9 +29,18 @@ CAMERA_DISCONNECT_TIMEOUT_SECONDS = 2.0
 # --- Detecção de objetos (YOLOv8n) -----------------------------------------
 YOLO_MODEL_PATH = MODELS_DIR / "yolov8n.pt"
 CONFIDENCE_THRESHOLD = 0.5
-# O detector de objetos roda a cada N frames; nos intermediários o último
-# resultado é reaproveitado.
+# Os detectores de objetos (YOLOv8n) e de rosto (YuNet) rodam a cada N frames novos;
+# nos intermediários o último resultado é reaproveitado. A detecção de movimento roda
+# em todo frame novo.
 DETECTION_FRAME_INTERVAL = 5
+
+# --- FPS --------------------------------------------------------------------
+# Quantidade de frames recentes na média móvel do FPS (frames novos processados por
+# segundo).
+FPS_AVERAGE_WINDOW_FRAMES = 30
+# Intervalo entre as linhas de FPS impressas no modo terminal, até o overlay exibir o
+# FPS sobre o vídeo.
+TERMINAL_FPS_PRINT_INTERVAL_SECONDS = 2.0
 
 # --- Detecção de rosto (YuNet, OpenCV) -------------------------------------
 YUNET_MODEL_PATH = MODELS_DIR / "face_detection_yunet_2023mar.onnx"

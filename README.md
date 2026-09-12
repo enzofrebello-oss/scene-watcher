@@ -69,6 +69,31 @@ Regiões em movimento são detectadas por subtração de fundo (MOG2), de forma 
 - regiões menores que 0,1% da área do frame (`MOTION_MIN_AREA_FRACTION`) são descartadas;
 - o fundo é modelado com os últimos 500 frames (`MOTION_HISTORY`, padrão do OpenCV): algo que fica parado por cerca de 30 s passa a fazer parte do fundo.
 
+## Pipeline de processamento e FPS
+
+A cada frame novo da câmera, o `FramePipeline` (`src/frame_pipeline.py`):
+
+- roda a detecção de movimento, que é leve;
+- a cada `DETECTION_FRAME_INTERVAL` frames (padrão 5), roda o YOLOv8n e o YuNet; nos frames intermediários, as últimas detecções de objetos e rostos são reaproveitadas;
+- calcula o FPS como frames novos processados por segundo, com média móvel dos últimos `FPS_AVERAGE_WINDOW_FRAMES` frames (padrão 30).
+
+Antes de abrir a câmera, os detectores rodam uma vez num frame vazio, para que o primeiro frame real não pague a inicialização dos modelos.
+
+### Trade-off do throttling
+
+Medido na CPU (sem GPU), com frames 1280×720 e a detecção de movimento em todo frame:
+
+| Estratégia | FPS com a câmera integrada | FPS sem limite de câmera | Processamento médio por frame, sem limite de câmera |
+|---|---|---|---|
+| YOLOv8n e YuNet a cada 5 frames (padrão) | 16,1 | 85,9 | 11,6 ms |
+| YOLOv8n a cada 5 frames, YuNet em todo frame | 16,5 | 51,7 | 19,4 ms |
+| YOLOv8n e YuNet em todo frame | 16,7 | 20,1 | 49,6 ms |
+
+- Com a câmera integrada na luz do ambiente de desenvolvimento, a própria câmera entrega cerca de 16 frames novos por segundo, e as três estratégias chegam ao mesmo FPS: o processamento ainda cabe no intervalo entre frames.
+- A diferença aparece quando a câmera entrega mais frames (boa iluminação, câmeras de 30 fps ou mais). O teto medido com frames em memória, sem esperar a câmera, mostra que processar tudo em todo frame fica em cerca de 20 FPS, enquanto o padrão passa de 80.
+- O custo do throttling é que objetos e rostos só são atualizados a cada 5 frames (cerca de 0,3 s a 16 FPS); entre uma detecção e outra, as caixas ficam na última posição conhecida.
+- Os frames em que os detectores rodam são mais lentos que os demais: cerca de 50 a 55 ms com frames em memória e, com a câmera aberta, chegaram a 100 a 160 ms nas medições. Isso pode aparecer como uma pequena irregularidade a cada 5 frames.
+
 ## Classes detectadas
 
 O YOLOv8n detecta as 80 classes do COCO. Internamente (detecções, logs) cada classe é identificada pelo nome original do COCO; na interface e no overlay aparece a tradução abaixo, definida em `src/coco_labels.py`. O rosto, que vem do YuNet, usa o identificador `face` e aparece como "rosto".
