@@ -57,6 +57,18 @@ O COCO não tem uma classe de rosto, então os rostos vêm de um detector dedica
 - o frame é reduzido para 640 px de largura (`FACE_DETECTION_INPUT_WIDTH`) antes da detecção, e as caixas voltam para as coordenadas do frame original. Na CPU, com frames 1280×720, isso custa cerca de 8 ms por frame, contra cerca de 30 ms na resolução cheia. Quanto menor essa largura, mais cedo rostos distantes deixam de ser detectados;
 - os pontos faciais (olhos, nariz, boca) que o YuNet também fornece são descartados.
 
+## Detecção de movimento
+
+Regiões em movimento são detectadas por subtração de fundo (MOG2), de forma independente do detector de objetos:
+
+- o frame é reduzido para 640 px de largura (`MOTION_PROCESSING_WIDTH`) e as caixas voltam para as coordenadas do frame original;
+- nos primeiros 30 frames (`MOTION_WARMUP_FRAMES`) o modelo só aprende o fundo e nenhum movimento é reportado. Esse estado é exibido como "calibrando fundo da cena..." e, com a câmera integrada a cerca de 16 frames novos por segundo, dura cerca de 2 s. Se a resolução do frame mudar, o fundo é aprendido de novo;
+- a sensibilidade (`MOTION_SENSITIVITY`, de 0 a 1, padrão 0.5) controla o limiar de variação do MOG2 em escala logarítmica: 0 → 64, 0.5 → 16 (padrão do OpenCV), 1 → 4. Quanto mais sensível, menores as mudanças que contam como movimento;
+- sombras são detectadas pelo MOG2 e não contam como movimento;
+- a máscara passa por erosão (1×, remove ruído isolado) e dilatação (2×, junta partes do mesmo objeto) com núcleo 3×3;
+- regiões menores que 0,1% da área do frame (`MOTION_MIN_AREA_FRACTION`) são descartadas;
+- o fundo é modelado com os últimos 500 frames (`MOTION_HISTORY`, padrão do OpenCV): algo que fica parado por cerca de 30 s passa a fazer parte do fundo.
+
 ## Classes detectadas
 
 O YOLOv8n detecta as 80 classes do COCO. Internamente (detecções, logs) cada classe é identificada pelo nome original do COCO; na interface e no overlay aparece a tradução abaixo, definida em `src/coco_labels.py`. O rosto, que vem do YuNet, usa o identificador `face` e aparece como "rosto".

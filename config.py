@@ -53,8 +53,29 @@ FACE_NMS_THRESHOLD = 0.3
 FACE_TOP_K = 5000
 
 # --- Detecção de movimento --------------------------------------------------
-# Frames usados para aprender o fundo da cena antes de reportar movimento.
+# Frames novos usados para aprender o fundo da cena antes de reportar movimento.
 MOTION_WARMUP_FRAMES = 30
+# Sensibilidade de 0 a 1, ligada ao limiar de variação do MOG2 (varThreshold) em
+# escala logarítmica entre os dois extremos abaixo: 0 → 64, 0.5 → 16 (padrão do
+# OpenCV), 1 → 4. Mais sensível significa limiar menor: mudanças menores contam
+# como movimento.
+MOTION_SENSITIVITY = 0.5
+MOTION_VAR_THRESHOLD_AT_MIN_SENSITIVITY = 64.0
+MOTION_VAR_THRESHOLD_AT_MAX_SENSITIVITY = 4.0
+# Área mínima de uma região de movimento, como fração da área do frame.
+MOTION_MIN_AREA_FRACTION = 0.001
+# Largura para a qual o frame é reduzido antes da detecção de movimento; as caixas
+# voltam para as coordenadas do frame original.
+MOTION_PROCESSING_WIDTH = 640
+# Quantidade de frames que o MOG2 considera ao modelar o fundo (padrão do OpenCV).
+# Com cerca de 16 frames novos por segundo, algo parado por cerca de 30 s passa a
+# fazer parte do fundo.
+MOTION_HISTORY = 500
+# Limpeza da máscara de movimento: a erosão remove ruído isolado e a dilatação junta
+# partes do mesmo objeto em movimento.
+MOTION_KERNEL_SIZE = 3
+MOTION_ERODE_ITERATIONS = 1
+MOTION_DILATE_ITERATIONS = 2
 # Fração do frame em movimento simultâneo a partir da qual a mudança é tratada
 # como variação brusca de iluminação e o modelo de fundo é reiniciado.
 LIGHTING_CHANGE_FRACTION = 0.8
