@@ -113,6 +113,8 @@ No Windows, algumas funções do OpenCV que abrem arquivos diretamente falham em
 - vídeos são gravados numa pasta temporária e movidos para `data/clips/` só depois de finalizados. O `cv2.VideoWriter` do OpenCV 5 já aceita caminhos com acento, mas gravar fora do destino garante que um clipe incompleto nunca apareça em `data/clips/` enquanto ainda está sendo escrito;
 - fontes TTF do overlay são lidas das pastas de fontes do sistema. O `cv2.FontFace` não abre fontes em pastas com acento e, nesse caso, cai silenciosamente para a fonte embutida do OpenCV, que também exibe acentos.
 
+Atenção: no Windows, assim que é importado, o ultralytics substitui `cv2.imread`, `cv2.imwrite` e `cv2.imshow` no processo inteiro por versões próprias que aceitam caminhos com acento. O projeto não depende disso. Os contornos acima continuam necessários, porque o YuNet e o `cv2.FontFace`, por exemplo, não passam por essas funções. Além disso, um `cv2.imwrite` que funciona dentro do app pode falhar num script ou teste que não importa o ultralytics.
+
 ## Estrutura de pastas
 
 ```
