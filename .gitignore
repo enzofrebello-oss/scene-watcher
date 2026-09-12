@@ -1,0 +1,14 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# pesos de modelos (baixados localmente)
+models/*.pt
+models/*.onnx
+
+# saídas geradas em execução
+data/logs/*
+data/clips/*
+data/settings.json
+!.gitkeep
