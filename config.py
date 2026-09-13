@@ -25,6 +25,9 @@ FRAME_HEIGHT = 720
 # Tempo sem nenhum frame válido a partir do qual a câmera é considerada
 # desconectada. Falhas de leitura isoladas dentro desse intervalo são toleradas.
 CAMERA_DISCONNECT_TIMEOUT_SECONDS = 2.0
+# Espelha a imagem da câmera na horizontal logo após a captura, antes de qualquer
+# detecção, como num espelho: a mão esquerda levantada aparece do lado esquerdo da tela.
+CAMERA_MIRROR = True
 
 # --- Detecção de objetos (YOLOv8n) -----------------------------------------
 YOLO_MODEL_PATH = MODELS_DIR / "yolov8n.pt"

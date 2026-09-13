@@ -53,6 +53,11 @@ class CameraSource:
     o backend repete o frame anterior. Assim, "frame" significa sempre "frame novo"
     no resto do sistema, independente do backend.
 
+    Com `mirror` ligado (padrão `CAMERA_MIRROR`), o frame é espelhado na horizontal logo
+    após a leitura, como num espelho, antes de qualquer detecção; assim as caixas já saem
+    nas coordenadas da imagem espelhada. `mirror` pode ser alterado a qualquer momento e
+    vale a partir da próxima leitura.
+
     A câmera só é considerada sem resposta quando nenhuma leitura é bem-sucedida por
     `disconnect_timeout` segundos. Frames repetidos contam como leitura bem-sucedida,
     então uma cena totalmente estática (ex. lente tampada, com frames idênticos) não
@@ -68,6 +73,7 @@ class CameraSource:
         width=config.FRAME_WIDTH,
         height=config.FRAME_HEIGHT,
         disconnect_timeout=config.CAMERA_DISCONNECT_TIMEOUT_SECONDS,
+        mirror=config.CAMERA_MIRROR,
         capture_factory=_open_capture,
         clock=time.monotonic,
     ):
@@ -75,6 +81,7 @@ class CameraSource:
         self.width = width
         self.height = height
         self.disconnect_timeout = disconnect_timeout
+        self.mirror = mirror
         self._capture_factory = capture_factory
         self._clock = clock
         self._cap = None
@@ -143,6 +150,10 @@ class CameraSource:
         self._received_image = True
         if self._is_repeat(frame):
             return None
+        # A comparação com o frame anterior usa a imagem original da câmera; o espelhamento
+        # vem depois, então frames repetidos não pagam a inversão.
+        if self.mirror:
+            frame = cv2.flip(frame, 1)
         return frame
 
     def _is_repeat(self, frame):

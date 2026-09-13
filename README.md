@@ -33,6 +33,8 @@ Enquanto a interface gráfica não existe, o app roda em modo terminal: abre uma
 
 Se a câmera não abrir, ou parar de entregar frames por mais de `CAMERA_DISCONNECT_TIMEOUT_SECONDS` (padrão 2 s), o app encerra com uma mensagem explicando o problema e código de saída 1.
 
+Por padrão, a imagem da câmera é espelhada na horizontal (`CAMERA_MIRROR`), como num espelho: a mão esquerda levantada aparece do lado esquerdo da tela. O espelhamento acontece logo após a captura, antes de qualquer detecção, então as caixas de objetos, rostos e movimento já saem na posição certa sobre a imagem espelhada.
+
 ## Testes
 
 ```powershell
