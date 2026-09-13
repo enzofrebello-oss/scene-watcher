@@ -90,8 +90,12 @@ MOTION_DILATE_ITERATIONS = 2
 LIGHTING_CHANGE_FRACTION = 0.8
 
 # --- Rastreamento -----------------------------------------------------------
-# Tolerância sem redetecção antes de remover um objeto rastreado.
+# Tolerância sem redetecção antes de remover um objeto rastreado, contada em ciclos de
+# detecção, não em frames: com DETECTION_FRAME_INTERVAL = 5 e cerca de 16 frames novos
+# por segundo, 10 ciclos são cerca de 3 s.
 TRACKER_MAX_MISSED = 10
+# IoU mínimo para associar uma detecção a um objeto rastreado da mesma classe.
+TRACKER_IOU_THRESHOLD = 0.3
 
 # --- Log de sessão ----------------------------------------------------------
 LOG_INTERVAL_SECONDS = 2.0

@@ -13,6 +13,7 @@ import cv2
 import numpy as np
 
 import config
+from src.detection_tracker import DetectionTracker
 from src.face_detector import FaceDetector
 from src.motion_detector import MotionDetector
 from src.object_detector import ObjectDetector
@@ -178,7 +179,10 @@ class FrameResult(NamedTuple):
     frame: np.ndarray  # frame novo da câmera, sem nada desenhado
     frame_index: int  # posição do frame desde a abertura da câmera, a partir de 0
     motion_boxes: list  # caixas (x1, y1, x2, y2) das regiões em movimento
-    detections: list  # objetos (YOLOv8n) e rostos (YuNet), como Detection
+    detections: list  # objetos (YOLOv8n) e rostos (YuNet) do último ciclo de detecção, como Detection
+    tracks: list  # objetos rastreados, como TrackedObject, inclusive os mantidos sem redetecção
+    new_tracks: list  # objetos que passaram a ser rastreados neste frame; vazio se os detectores não rodaram
+    removed_tracks: list  # objetos removidos neste frame por excederem a tolerância; vazio se os detectores não rodaram
     detections_updated: bool  # True se os detectores de objetos e rostos rodaram neste frame
     is_calibrating: bool  # True enquanto a detecção de movimento aprende o fundo
     fps: float | None  # frames novos processados por segundo, com média móvel
@@ -188,8 +192,9 @@ class FramePipeline:
     """Câmera, detecção de movimento em todo frame novo e de objetos e rostos a cada N frames.
 
     O YOLOv8n custa bem mais que a detecção de movimento, então objetos e rostos só são
-    detectados a cada `detection_interval` frames; nos intermediários, as últimas
-    detecções são reaproveitadas.
+    detectados a cada `detection_interval` frames, cada vez sendo um ciclo de detecção
+    que também atualiza o `DetectionTracker`. Nos frames intermediários, as últimas
+    detecções e os objetos rastreados são reaproveitados.
     """
 
     def __init__(
@@ -198,6 +203,7 @@ class FramePipeline:
         object_detector=None,
         face_detector=None,
         motion_detector=None,
+        tracker=None,
         detection_interval=config.DETECTION_FRAME_INTERVAL,
         fps_window=config.FPS_AVERAGE_WINDOW_FRAMES,
         clock=time.perf_counter,
@@ -208,11 +214,13 @@ class FramePipeline:
         self.object_detector = object_detector if object_detector is not None else ObjectDetector()
         self.face_detector = face_detector if face_detector is not None else FaceDetector()
         self.motion_detector = motion_detector if motion_detector is not None else MotionDetector()
+        self.tracker = tracker if tracker is not None else DetectionTracker()
         self.detection_interval = detection_interval
         self._clock = clock
         self._frame_times = deque(maxlen=fps_window)
         self._frame_index = 0
         self._detections = []
+        self._tracks = []
 
     @property
     def fps(self):
@@ -236,6 +244,8 @@ class FramePipeline:
         self.source.open()
         self._frame_index = 0
         self._detections = []
+        self.tracker.reset()
+        self._tracks = []
         self._frame_times.clear()
 
     def close(self):
@@ -251,14 +261,20 @@ class FramePipeline:
             return None
         motion_boxes = self.motion_detector.detect(frame)
         detections_updated = self._frame_index % self.detection_interval == 0
+        new_tracks, removed_tracks = [], []
         if detections_updated:
             self._detections = self.object_detector.detect(frame) + self.face_detector.detect(frame)
+            update = self.tracker.update(self._detections)
+            self._tracks, new_tracks, removed_tracks = update.active, update.new, update.removed
         self._frame_times.append(self._clock())
         result = FrameResult(
             frame=frame,
             frame_index=self._frame_index,
             motion_boxes=motion_boxes,
             detections=list(self._detections),
+            tracks=list(self._tracks),
+            new_tracks=new_tracks,
+            removed_tracks=removed_tracks,
             detections_updated=detections_updated,
             is_calibrating=self.motion_detector.is_calibrating,
             fps=self.fps,

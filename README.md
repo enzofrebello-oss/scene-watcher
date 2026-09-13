@@ -33,6 +33,14 @@ Enquanto a interface gráfica não existe, o app roda em modo terminal: abre uma
 
 Se a câmera não abrir, ou parar de entregar frames por mais de `CAMERA_DISCONNECT_TIMEOUT_SECONDS` (padrão 2 s), o app encerra com uma mensagem explicando o problema e código de saída 1.
 
+## Testes
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest
+```
+
+O `pytest.ini` na raiz coloca a pasta do projeto no caminho de importação, para que os testes em `tests/` importem `config` e `src`.
+
 ## Modelos
 
 Os pesos ficam em `models/` e não são versionados:
@@ -74,7 +82,7 @@ Regiões em movimento são detectadas por subtração de fundo (MOG2), de forma 
 A cada frame novo da câmera, o `FramePipeline` (`src/frame_pipeline.py`):
 
 - roda a detecção de movimento, que é leve;
-- a cada `DETECTION_FRAME_INTERVAL` frames (padrão 5), roda o YOLOv8n e o YuNet; nos frames intermediários, as últimas detecções de objetos e rostos são reaproveitadas;
+- a cada `DETECTION_FRAME_INTERVAL` frames (padrão 5), roda o YOLOv8n e o YuNet e atualiza o `DetectionTracker` com as detecções; nos frames intermediários, as últimas detecções e os objetos rastreados são reaproveitados;
 - calcula o FPS como frames novos processados por segundo, com média móvel dos últimos `FPS_AVERAGE_WINDOW_FRAMES` frames (padrão 30).
 
 Antes de abrir a câmera, os detectores rodam uma vez num frame vazio, para que o primeiro frame real não pague a inicialização dos modelos.
@@ -93,6 +101,18 @@ Medido na CPU (sem GPU), com frames 1280×720 e a detecção de movimento em tod
 - A diferença aparece quando a câmera entrega mais frames (boa iluminação, câmeras de 30 fps ou mais). O teto medido com frames em memória, sem esperar a câmera, mostra que processar tudo em todo frame fica em cerca de 20 FPS, enquanto o padrão passa de 80.
 - O custo do throttling é que objetos e rostos só são atualizados a cada 5 frames (cerca de 0,3 s a 16 FPS); entre uma detecção e outra, as caixas ficam na última posição conhecida.
 - Os frames em que os detectores rodam são mais lentos que os demais: cerca de 50 a 55 ms com frames em memória e, com a câmera aberta, chegaram a 100 a 160 ms nas medições. Isso pode aparecer como uma pequena irregularidade a cada 5 frames.
+
+## Rastreamento de detecções
+
+O `DetectionTracker` (`src/detection_tracker.py`) mantém a identidade de cada objeto e rosto entre ciclos de detecção, para que as caixas não pisquem quando o detector falha em alguns ciclos:
+
+- a cada ciclo de detecção (a cada `DETECTION_FRAME_INTERVAL` frames), as detecções são associadas aos objetos já rastreados da mesma classe pela sobreposição das caixas (IoU, função `calculate_iou` em `src/utils/geometry.py`). Só há associação com IoU de pelo menos `TRACKER_IOU_THRESHOLD` (padrão 0,3), e os pares de maior IoU são escolhidos primeiro;
+- detecções sem par viram objetos novos, com uma identidade (`track_id`) que nunca é reaproveitada durante a execução;
+- um objeto que não é redetectado continua na última posição conhecida por até `TRACKER_MAX_MISSED` ciclos seguidos (padrão 10) e é removido no ciclo seguinte. A tolerância é contada em ciclos de detecção, não em frames: com o intervalo padrão de 5 frames e cerca de 16 frames novos por segundo, 10 ciclos são cerca de 3 s. Por isso, a caixa de um objeto que sai de cena continua visível por até cerca de 3 s;
+- rostos passam pelo tracker com a classe `face`. Como a associação é só entre caixas da mesma classe, um rosto nunca é confundido com a pessoa que o contém;
+- o IoU usa coordenadas contínuas: a caixa (0, 0, 10, 10) tem área 100, caixas que só se tocam na borda têm IoU 0, e uma caixa de área zero tem IoU 0 com qualquer outra.
+
+Limitação: a associação depende de sobreposição. Se um objeto se desloca tanto entre duas detecções que a caixa nova e a anterior ficam com IoU abaixo de 0,3 (por exemplo, atravessando o quadro rapidamente ou ficando alguns ciclos sem ser detectado enquanto se move), ele ganha uma identidade nova.
 
 ## Classes detectadas
 
@@ -157,6 +177,7 @@ Atenção: no Windows, assim que é importado, o ultralytics substitui `cv2.imre
 ```
 scene-watcher/
 ├── requirements.txt
+├── pytest.ini                   # põe a raiz do projeto no caminho de importação dos testes
 ├── README.md
 ├── config.py
 ├── main.py
