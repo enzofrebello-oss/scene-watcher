@@ -17,6 +17,7 @@ from src.detection_tracker import DetectionTracker
 from src.face_detector import FaceDetector
 from src.motion_detector import MotionDetector
 from src.object_detector import ObjectDetector
+from src.overlay_renderer import OverlayRenderer
 from src.utils.opencv_logging import opencv_warnings_suppressed
 
 # Passo da amostra esparsa de pixels comparada antes do frame inteiro ao procurar
@@ -188,6 +189,7 @@ class CameraSource:
 
 class FrameResult(NamedTuple):
     frame: np.ndarray  # frame novo da câmera, sem nada desenhado
+    annotated_frame: np.ndarray  # cópia do frame com o overlay desenhado
     frame_index: int  # posição do frame desde a abertura da câmera, a partir de 0
     motion_boxes: list  # caixas (x1, y1, x2, y2) das regiões em movimento
     detections: list  # objetos (YOLOv8n) e rostos (YuNet) do último ciclo de detecção, como Detection
@@ -205,7 +207,8 @@ class FramePipeline:
     O YOLOv8n custa bem mais que a detecção de movimento, então objetos e rostos só são
     detectados a cada `detection_interval` frames, cada vez sendo um ciclo de detecção
     que também atualiza o `DetectionTracker`. Nos frames intermediários, as últimas
-    detecções e os objetos rastreados são reaproveitados.
+    detecções e os objetos rastreados são reaproveitados. No fim de cada frame, o
+    `OverlayRenderer` desenha o overlay numa cópia, e o frame original segue sem desenho.
     """
 
     def __init__(
@@ -215,6 +218,7 @@ class FramePipeline:
         face_detector=None,
         motion_detector=None,
         tracker=None,
+        overlay_renderer=None,
         detection_interval=config.DETECTION_FRAME_INTERVAL,
         fps_window=config.FPS_AVERAGE_WINDOW_FRAMES,
         clock=time.perf_counter,
@@ -226,6 +230,9 @@ class FramePipeline:
         self.face_detector = face_detector if face_detector is not None else FaceDetector()
         self.motion_detector = motion_detector if motion_detector is not None else MotionDetector()
         self.tracker = tracker if tracker is not None else DetectionTracker()
+        self.overlay_renderer = (
+            overlay_renderer if overlay_renderer is not None else OverlayRenderer(max_missed=self.tracker.max_missed)
+        )
         self.detection_interval = detection_interval
         self._clock = clock
         self._frame_times = deque(maxlen=fps_window)
@@ -244,12 +251,14 @@ class FramePipeline:
     def warm_up(self):
         """Roda os detectores uma vez num frame vazio, antes de abrir a câmera.
 
-        A primeira inferência de cada modelo é bem mais lenta que as seguintes; assim o
-        primeiro frame real não paga essa inicialização.
+        A primeira inferência de cada modelo, e a primeira escrita com as fontes do overlay,
+        são bem mais lentas que as seguintes; assim o primeiro frame real não paga essa
+        inicialização.
         """
         blank = np.zeros((config.FRAME_HEIGHT, config.FRAME_WIDTH, 3), np.uint8)
         self.object_detector.detect(blank)
         self.face_detector.detect(blank)
+        self.overlay_renderer.warm_up()
 
     def open(self):
         self.source.open()
@@ -257,6 +266,7 @@ class FramePipeline:
         self._detections = []
         self.tracker.reset()
         self._tracks = []
+        self.overlay_renderer.reset()
         self._frame_times.clear()
 
     def close(self):
@@ -280,6 +290,7 @@ class FramePipeline:
         self._frame_times.append(self._clock())
         result = FrameResult(
             frame=frame,
+            annotated_frame=None,
             frame_index=self._frame_index,
             motion_boxes=motion_boxes,
             detections=list(self._detections),
@@ -290,6 +301,7 @@ class FramePipeline:
             is_calibrating=self.motion_detector.is_calibrating,
             fps=self.fps,
         )
+        result = result._replace(annotated_frame=self.overlay_renderer.render(result))
         self._frame_index += 1
         return result
 

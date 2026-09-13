@@ -1,11 +1,9 @@
 """Ponto de entrada do Scene Watcher."""
 
 import sys
-import time
 
 import cv2
 
-import config
 from src.frame_pipeline import CameraDisconnectedError, CameraOpenError, FramePipeline
 from src.utils.model_files import ModelUnavailableError
 
@@ -14,7 +12,7 @@ EXIT_KEYS = {ord("q"), ord("Q"), 27}  # 27 = ESC
 
 
 def run_terminal():
-    """Modo terminal: janela simples do OpenCV. Devolve o código de saída do processo."""
+    """Modo terminal: janela simples do OpenCV com o overlay. Devolve o código de saída do processo."""
     print("carregando modelos...")
     try:
         pipeline = FramePipeline()
@@ -35,18 +33,11 @@ def run_terminal():
         "pressione q ou ESC na janela para sair, ou Ctrl+C no terminal"
     )
     cv2.namedWindow(WINDOW_TITLE, cv2.WINDOW_NORMAL | cv2.WINDOW_KEEPRATIO)
-    next_fps_report = time.monotonic() + config.TERMINAL_FPS_PRINT_INTERVAL_SECONDS
     try:
         while True:
             result = pipeline.process_next()
             if result is not None:
-                cv2.imshow(WINDOW_TITLE, result.frame)
-            # Até o overlay da etapa 7, o FPS aparece só no terminal.
-            now = time.monotonic()
-            if now >= next_fps_report:
-                fps = pipeline.fps
-                print(f"fps {fps:.1f}" if fps is not None else "fps: medindo...")
-                next_fps_report = now + config.TERMINAL_FPS_PRINT_INTERVAL_SECONDS
+                cv2.imshow(WINDOW_TITLE, result.annotated_frame)
             key = cv2.waitKey(1) & 0xFF
             if key in EXIT_KEYS:
                 break

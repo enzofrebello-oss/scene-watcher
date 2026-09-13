@@ -41,9 +41,6 @@ DETECTION_FRAME_INTERVAL = 5
 # Quantidade de frames recentes na média móvel do FPS (frames novos processados por
 # segundo).
 FPS_AVERAGE_WINDOW_FRAMES = 30
-# Intervalo entre as linhas de FPS impressas no modo terminal, até o overlay exibir o
-# FPS sobre o vídeo.
-TERMINAL_FPS_PRINT_INTERVAL_SECONDS = 2.0
 
 # --- Detecção de rosto (YuNet, OpenCV) -------------------------------------
 YUNET_MODEL_PATH = MODELS_DIR / "face_detection_yunet_2023mar.onnx"
@@ -99,6 +96,60 @@ LIGHTING_CHANGE_FRACTION = 0.8
 TRACKER_MAX_MISSED = 10
 # IoU mínimo para associar uma detecção a um objeto rastreado da mesma classe.
 TRACKER_IOU_THRESHOLD = 0.3
+
+# --- Overlay ----------------------------------------------------------------
+# O overlay é desenhado numa cópia do frame (src/overlay_renderer.py). Os tamanhos em
+# pixels abaixo valem para um frame com OVERLAY_REFERENCE_HEIGHT de altura e são
+# escalados proporcionalmente em outras resoluções.
+OVERLAY_REFERENCE_HEIGHT = 720
+# Os tamanhos de fonte valem na medida da fonte de interface; a fonte monoespaçada é
+# ajustada para ter algarismos da mesma altura.
+# Classes rastreadas normalmente, mas sem caixa, rótulo nem linha no painel do overlay.
+# Log, eventos e alertas continuam vendo essas classes.
+OVERLAY_HIDDEN_CLASSES = frozenset({"person"})
+# Cores do design da interface, em hex RGB.
+COLOR_BACKGROUND = "#0F1417"
+COLOR_TEXT = "#E8ECEE"
+COLOR_ACCENT = "#4FD1C5"
+# Cores das caixas, escolhidas pelo crc32 do nome da classe. Ficam de fora tons próximos
+# do destaque (#4FD1C5), do alerta (#F0A868) e do erro (#E06C75), para uma caixa não
+# parecer instrumento ou aviso, e tons próximos entre si, para as cores continuarem
+# distinguíveis sobre o vídeo.
+OVERLAY_CLASS_PALETTE = [
+    "#FFE14A",  # amarelo
+    "#CFF25A",  # lima
+    "#7ED957",  # verde
+    "#34D17A",  # esmeralda
+    "#4FB8FF",  # azul-céu
+    "#7A9CFF",  # azul
+    "#A08CFF",  # lavanda
+    "#C77DFF",  # violeta
+    "#EE7AE9",  # orquídea
+]
+# Caixas de objetos e rostos e seus rótulos (classe traduzida e confiança).
+OVERLAY_BOX_THICKNESS = 2
+OVERLAY_LABEL_FONT_SIZE = 18
+OVERLAY_LABEL_PADDING = 4
+OVERLAY_LABEL_GAP = 5  # entre o nome da classe e a confiança
+# Caixas de movimento: tracejado neutro (COLOR_TEXT) e translúcido, sem rótulo.
+OVERLAY_MOTION_THICKNESS = 1
+OVERLAY_MOTION_DASH_LENGTH = 10
+OVERLAY_MOTION_GAP_LENGTH = 6
+OVERLAY_MOTION_OPACITY = 0.6
+# Instrumentos: contador técnico (canto superior esquerdo) e painel de objetos (canto
+# superior direito), em fonte monoespaçada na cor de destaque. São mais discretos que as
+# caixas: fonte menor, texto levemente translúcido e fundo translúcido.
+OVERLAY_INSTRUMENT_FONT_SIZE = 15
+OVERLAY_INSTRUMENT_PADDING = 8
+OVERLAY_INSTRUMENT_LINE_SPACING = 2
+OVERLAY_INSTRUMENT_MARGIN = 28  # distância das bordas do frame, por dentro dos cantos de viewfinder
+OVERLAY_INSTRUMENT_TEXT_OPACITY = 0.85
+OVERLAY_INSTRUMENT_BACKGROUND_OPACITY = 0.55
+# Cantos de viewfinder nos quatro cantos do vídeo, desenhados por trás de tudo.
+OVERLAY_CORNER_LENGTH_FRACTION = 0.04  # comprimento de cada traço, em fração da menor dimensão do frame
+OVERLAY_CORNER_THICKNESS = 2
+OVERLAY_CORNER_MARGIN = 16
+OVERLAY_CORNER_OPACITY = 0.5
 
 # --- Log de sessão ----------------------------------------------------------
 LOG_INTERVAL_SECONDS = 2.0

@@ -29,7 +29,7 @@ python -m venv .venv
 .\.venv\Scripts\python.exe main.py
 ```
 
-Enquanto a interface gráfica não existe, o app roda em modo terminal: abre uma janela simples do OpenCV com a imagem da câmera. Para sair, pressione `q` ou `ESC` na janela, feche a janela, ou use `Ctrl+C` no terminal. A câmera é sempre liberada ao sair.
+Enquanto a interface gráfica não existe, o app roda em modo terminal: abre uma janela simples do OpenCV com a imagem da câmera e o [overlay](#overlay). Para sair, pressione `q` ou `ESC` na janela, feche a janela, ou use `Ctrl+C` no terminal. A câmera é sempre liberada ao sair.
 
 Se a câmera não abrir, ou parar de entregar frames por mais de `CAMERA_DISCONNECT_TIMEOUT_SECONDS` (padrão 2 s), o app encerra com uma mensagem explicando o problema e código de saída 1.
 
@@ -85,7 +85,8 @@ A cada frame novo da câmera, o `FramePipeline` (`src/frame_pipeline.py`):
 
 - roda a detecção de movimento, que é leve;
 - a cada `DETECTION_FRAME_INTERVAL` frames (padrão 5), roda o YOLOv8n e o YuNet e atualiza o `DetectionTracker` com as detecções; nos frames intermediários, as últimas detecções e os objetos rastreados são reaproveitados;
-- calcula o FPS como frames novos processados por segundo, com média móvel dos últimos `FPS_AVERAGE_WINDOW_FRAMES` frames (padrão 30).
+- calcula o FPS como frames novos processados por segundo, com média móvel dos últimos `FPS_AVERAGE_WINDOW_FRAMES` frames (padrão 30);
+- desenha o overlay numa cópia do frame. O `FrameResult` traz o frame limpo (`frame`) e o desenhado (`annotated_frame`).
 
 Antes de abrir a câmera, os detectores rodam uma vez num frame vazio, para que o primeiro frame real não pague a inicialização dos modelos.
 
@@ -115,6 +116,45 @@ O `DetectionTracker` (`src/detection_tracker.py`) mantém a identidade de cada o
 - o IoU usa coordenadas contínuas: a caixa (0, 0, 10, 10) tem área 100, caixas que só se tocam na borda têm IoU 0, e uma caixa de área zero tem IoU 0 com qualquer outra.
 
 Limitação: a associação depende de sobreposição. Se um objeto se desloca tanto entre duas detecções que a caixa nova e a anterior ficam com IoU abaixo de 0,3 (por exemplo, atravessando o quadro rapidamente ou ficando alguns ciclos sem ser detectado enquanto se move), ele ganha uma identidade nova.
+
+## Overlay
+
+O `OverlayRenderer` (`src/overlay_renderer.py`) desenha sobre uma cópia de cada frame tudo o que aparece na área de câmera: na janela do modo terminal e, na fase 2, na interface. O frame original continua sem desenho, para recortes como a miniatura do objeto em foco. De trás para frente:
+
+- **cantos de viewfinder**: quatro ângulos finos na cor de destaque (`#4FD1C5`), a 50% de opacidade;
+- **caixas de movimento**: tracejado neutro (`#E8ECEE`) a 60% de opacidade, sem rótulo;
+- **contador técnico**, no canto superior esquerdo: frame desde a abertura da câmera, FPS com média móvel e quantidade de objetos rastreados visíveis. Enquanto o fundo da cena é aprendido, aparece a linha "calibrando fundo da cena...";
+- **painel de objetos**, no canto superior direito: uma linha por classe, na ordem em que as classes apareceram, com a contagem entre parênteses quando há mais de um objeto e a maior confiança entre eles, por exemplo "1. celular (2) 0.89". Sem objetos, mostra "nenhum objeto detectado no momento";
+- **caixas de objetos e rostos**, na cor da classe, com um rótulo com a classe traduzida e a confiança.
+
+O contador e o painel usam fonte monoespaçada na cor de destaque, menor que a dos rótulos, com o texto a 85% e fundo `#0F1417` a 55% de opacidade, para que as caixas continuem sendo o elemento visual mais forte.
+
+### Cores por classe
+
+Cada classe usa uma das 9 cores de `OVERLAY_CLASS_PALETTE`, escolhida pelo crc32 do nome da classe, então a cor é a mesma em qualquer execução. A paleta exclui tons próximos das cores de destaque, alerta e erro da interface. Com 81 classes e 9 cores, classes diferentes podem ter a mesma cor.
+
+### Objetos mantidos sem redetecção
+
+A caixa e o rótulo de um objeto que o detector deixou de encontrar esmaecem em degraus, a cada ciclo de detecção sem redetecção: a opacidade é 1 − ciclos/11, ou seja, 100% quando o objeto foi detectado no último ciclo e cerca de 9% no 10º ciclo, logo antes de o tracker removê-lo. Esses objetos continuam contando no contador e no painel até serem removidos. Uma linha do painel só esmaece quando todos os objetos daquela classe estão esmaecendo.
+
+### Classes ocultas
+
+`OVERLAY_HIDDEN_CLASSES` (padrão: `person`) tira do overlay a caixa, o rótulo e a linha do painel dessas classes: a caixa do corpo inteiro é grande e disputa atenção com rostos e objetos. Essas classes continuam sendo detectadas e rastreadas.
+
+### Rótulos, fontes e tamanhos
+
+- O rótulo fica logo acima da caixa ou, sem espaço, dentro dela. Se cair sobre outro rótulo, o contador ou o painel, desce até ficar livre. Objetos detectados no último ciclo escolhem a posição primeiro e são desenhados por cima.
+- O nome da classe usa a fonte de interface e a confiança, a fonte monoespaçada, com os algarismos na mesma altura das letras. Com Inter e IBM Plex Mono instaladas, o overlay usa essas fontes; sem elas, Segoe UI e Consolas. As fontes são carregadas e aquecidas antes de abrir a câmera.
+- Os tamanhos em `config.py` valem para frames de 720 px de altura e são escalados proporcionalmente em outras resoluções.
+
+### Custo
+
+Na CPU, sem outra carga, o overlay de uma cena com 5 objetos e uma região de movimento leva cerca de 1,2 ms por frame em 1280×720, dos quais cerca de 0,6 ms são a cópia do frame. Com a câmera e os detectores rodando, a média medida ficou entre 3 e 4 ms, e o FPS continuou limitado pela câmera (entre 14,6 e 16,2 nas medições, conforme a iluminação).
+
+### Limitações
+
+- O tracejado de movimento, claro e translúcido, fica pouco visível em cenas muito claras.
+- Cores vizinhas da paleta, como amarelo e lima, ou verde e esmeralda, podem ser confundidas em caixas finas.
 
 ## Classes detectadas
 
