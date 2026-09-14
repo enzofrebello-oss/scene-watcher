@@ -145,6 +145,9 @@ OVERLAY_INSTRUMENT_LINE_SPACING = 2
 OVERLAY_INSTRUMENT_MARGIN = 28  # distância das bordas do frame, por dentro dos cantos de viewfinder
 OVERLAY_INSTRUMENT_TEXT_OPACITY = 0.85
 OVERLAY_INSTRUMENT_BACKGROUND_OPACITY = 0.55
+# Opacidade mínima de uma linha do painel cujos objetos estão todos esmaecendo. A caixa
+# chega a cerca de 9%, mas a linha continua legível até o tracker remover o objeto.
+OVERLAY_PANEL_MIN_ROW_OPACITY = 0.3
 # Cantos de viewfinder nos quatro cantos do vídeo, desenhados por trás de tudo.
 OVERLAY_CORNER_LENGTH_FRACTION = 0.04  # comprimento de cada traço, em fração da menor dimensão do frame
 OVERLAY_CORNER_THICKNESS = 2

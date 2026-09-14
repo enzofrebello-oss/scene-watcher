@@ -138,7 +138,7 @@ Cada classe usa uma das 9 cores de `OVERLAY_CLASS_PALETTE`, escolhida pelo crc32
 
 ### Objetos mantidos sem redetecção
 
-A caixa e o rótulo de um objeto que o detector deixou de encontrar esmaecem em degraus, a cada ciclo de detecção sem redetecção: a opacidade é 1 − ciclos/11, ou seja, 100% quando o objeto foi detectado no último ciclo e cerca de 9% no 10º ciclo, logo antes de o tracker removê-lo. Esses objetos continuam contando no contador e no painel até serem removidos. Uma linha do painel só esmaece quando todos os objetos daquela classe estão esmaecendo.
+A caixa e o rótulo de um objeto que o detector deixou de encontrar esmaecem em degraus, a cada ciclo de detecção sem redetecção: a opacidade é 1 − ciclos/11, ou seja, 100% quando o objeto foi detectado no último ciclo e cerca de 9% no 10º ciclo, logo antes de o tracker removê-lo. Esses objetos continuam contando no contador e no painel até serem removidos. Uma linha do painel só esmaece quando todos os objetos daquela classe estão esmaecendo, e nunca fica abaixo de 30% (`OVERLAY_PANEL_MIN_ROW_OPACITY`): enquanto a caixa pode chegar a cerca de 9%, a linha continua legível, indicando que ainda há algo ali até o tracker remover o objeto.
 
 ### Classes ocultas
 

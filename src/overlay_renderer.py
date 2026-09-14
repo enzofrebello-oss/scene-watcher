@@ -105,6 +105,15 @@ def panel_rows(tracks, class_order, max_missed=config.TRACKER_MAX_MISSED):
     return rows
 
 
+def panel_row_opacity(row, minimum=config.OVERLAY_PANEL_MIN_ROW_OPACITY):
+    """Opacidade de uma linha do painel.
+
+    Acompanha o esmaecimento dos objetos da classe, mas não fica abaixo do mínimo: a linha
+    continua legível, indicando que ainda há algo ali, até o tracker remover o último objeto.
+    """
+    return max(minimum, row.opacity)
+
+
 def panel_lines(rows):
     """Textos do painel de objetos, com a confiança alinhada em coluna (fonte monoespaçada)."""
     if not rows:
@@ -386,7 +395,7 @@ class OverlayRenderer:
         counter_text = counter_lines(result.frame_index, result.fps, len(tracks), result.is_calibrating)
         counter = self._instrument_block([(text, 1.0) for text in counter_text], margin, margin, metrics, align_right=False)
         panel_text = panel_lines(rows)
-        opacities = [row.opacity for row in rows] or [1.0]
+        opacities = [panel_row_opacity(row) for row in rows] or [1.0]
         panel = self._instrument_block(list(zip(panel_text, opacities)), width - margin, margin, metrics, align_right=True)
 
         # O rótulo fica logo acima da caixa ou, sem espaço, dentro dela; objetos detectados
