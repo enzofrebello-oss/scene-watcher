@@ -29,8 +29,9 @@ class MotionDetector:
     coordenadas do frame original.
 
     Nos primeiros `warmup_frames` frames o modelo só aprende o fundo e `detect` devolve
-    lista vazia; `is_calibrating` indica esse período. Se a resolução do frame mudar, o
-    fundo é aprendido de novo.
+    lista vazia; `is_calibrating` indica esse período para o próximo frame e
+    `last_frame_calibrating`, se o último frame passado a `detect` só serviu para aprender o
+    fundo. Se a resolução do frame mudar, o fundo é aprendido de novo.
 
     `sensitivity` pode ser alterada a qualquer momento, sem reiniciar o fundo.
     """
@@ -51,6 +52,7 @@ class MotionDetector:
         self._subtractor = None
         self._frame_size = None
         self._frames_seen = 0
+        self._last_frame_calibrating = True
         self.sensitivity = sensitivity
         self._reset_background()
 
@@ -67,7 +69,18 @@ class MotionDetector:
 
     @property
     def is_calibrating(self):
+        """Se o próximo frame passado a `detect` ainda vai servir só para aprender o fundo."""
         return self._frames_seen < self.warmup_frames
+
+    @property
+    def last_frame_calibrating(self):
+        """Se o último frame passado a `detect` só serviu para aprender o fundo (True antes do primeiro).
+
+        Difere de `is_calibrating` logo depois do último frame de aquecimento, inclusive do
+        aquecimento que recomeça após uma troca de resolução: `is_calibrating` já responde
+        pelo frame seguinte.
+        """
+        return self._last_frame_calibrating
 
     def _reset_background(self):
         self._subtractor = cv2.createBackgroundSubtractorMOG2(
@@ -93,6 +106,7 @@ class MotionDetector:
             image = frame
 
         calibrating = self.is_calibrating
+        self._last_frame_calibrating = calibrating
         mask = self._subtractor.apply(image)
         self._frames_seen = min(self._frames_seen + 1, self.warmup_frames)
         if calibrating:

@@ -197,7 +197,7 @@ class FrameResult(NamedTuple):
     new_tracks: list  # objetos que passaram a ser rastreados neste frame; vazio se os detectores não rodaram
     removed_tracks: list  # objetos removidos neste frame por excederem a tolerância; vazio se os detectores não rodaram
     detections_updated: bool  # True se os detectores de objetos e rostos rodaram neste frame
-    is_calibrating: bool  # True enquanto a detecção de movimento aprende o fundo
+    is_calibrating: bool  # True se este frame só serviu para a detecção de movimento aprender o fundo
     fps: float | None  # frames novos processados por segundo, com média móvel
 
 
@@ -298,7 +298,7 @@ class FramePipeline:
             new_tracks=new_tracks,
             removed_tracks=removed_tracks,
             detections_updated=detections_updated,
-            is_calibrating=self.motion_detector.is_calibrating,
+            is_calibrating=self.motion_detector.last_frame_calibrating,
             fps=self.fps,
         )
         result = result._replace(annotated_frame=self.overlay_renderer.render(result))
