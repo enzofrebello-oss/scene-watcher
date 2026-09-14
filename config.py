@@ -152,7 +152,17 @@ OVERLAY_CORNER_MARGIN = 16
 OVERLAY_CORNER_OPACITY = 0.5
 
 # --- Log de sessão ----------------------------------------------------------
+# O log (SESSION_LOG_PATH) é sobrescrito no início de cada sessão. Intervalo entre os
+# registros periódicos (type "summary").
 LOG_INTERVAL_SECONDS = 2.0
+# Versão do formato do log, gravada em session_started; muda quando o formato muda de
+# forma incompatível.
+LOG_FORMAT_VERSION = 1
+# "movimento começou" depois desta quantidade de frames novos seguidos com movimento, e
+# "movimento parou" depois deste tempo sem nenhum movimento, para o movimento fragmentado
+# não gerar uma rajada de eventos.
+MOTION_START_FRAMES = 3
+MOTION_STOP_SECONDS = 1.0
 
 # --- Tipografia do overlay --------------------------------------------------
 # O texto sobre o vídeo é desenhado com cv2.FontFace (OpenCV 5). Nomes de arquivo

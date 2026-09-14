@@ -18,6 +18,7 @@ from src.face_detector import FaceDetector
 from src.motion_detector import MotionDetector
 from src.object_detector import ObjectDetector
 from src.overlay_renderer import OverlayRenderer
+from src.scene_logger import SceneLogger
 from src.utils.opencv_logging import opencv_warnings_suppressed
 
 # Passo da amostra esparsa de pixels comparada antes do frame inteiro ao procurar
@@ -199,6 +200,7 @@ class FrameResult(NamedTuple):
     detections_updated: bool  # True se os detectores de objetos e rostos rodaram neste frame
     is_calibrating: bool  # True se este frame só serviu para a detecção de movimento aprender o fundo
     fps: float | None  # frames novos processados por segundo, com média móvel
+    events: list  # registros gravados no log da sessão neste frame (eventos e registro periódico), como SceneEvent
 
 
 class FramePipeline:
@@ -208,7 +210,12 @@ class FramePipeline:
     detectados a cada `detection_interval` frames, cada vez sendo um ciclo de detecção
     que também atualiza o `DetectionTracker`. Nos frames intermediários, as últimas
     detecções e os objetos rastreados são reaproveitados. No fim de cada frame, o
-    `OverlayRenderer` desenha o overlay numa cópia, e o frame original segue sem desenho.
+    `SceneLogger` registra os eventos da sessão e o `OverlayRenderer` desenha o overlay numa
+    cópia, e o frame original segue sem desenho.
+
+    `open()` começa a sessão do log e `close()` a encerra. Cada registro gravado volta uma
+    única vez, na ordem do arquivo, na primeira destas chamadas depois de gravado: `open()`,
+    `process_next()` (em `FrameResult.events`) ou `close()`.
     """
 
     def __init__(
@@ -219,6 +226,7 @@ class FramePipeline:
         motion_detector=None,
         tracker=None,
         overlay_renderer=None,
+        scene_logger=None,
         detection_interval=config.DETECTION_FRAME_INTERVAL,
         fps_window=config.FPS_AVERAGE_WINDOW_FRAMES,
         clock=time.perf_counter,
@@ -233,6 +241,9 @@ class FramePipeline:
         self.overlay_renderer = (
             overlay_renderer if overlay_renderer is not None else OverlayRenderer(max_missed=self.tracker.max_missed)
         )
+        self.scene_logger = scene_logger if scene_logger is not None else SceneLogger()
+        self._pending_events = []  # gravados fora de um frame (desconexão), devolvidos na próxima chamada
+        self._disconnect_logged = False
         self.detection_interval = detection_interval
         self._clock = clock
         self._frame_times = deque(maxlen=fps_window)
@@ -261,23 +272,52 @@ class FramePipeline:
         self.overlay_renderer.warm_up()
 
     def open(self):
+        """Abre a câmera e começa a sessão do log; devolve os eventos gerados, na ordem do log.
+
+        Se a sessão já estava ativa (câmera reaberta no meio da sessão), não começa outra: os
+        objetos que o tracker vai esquecer são registrados como sumidos.
+        """
         self.source.open()
+        events = self._take_pending_events()
+        if self.scene_logger.session_active:
+            events += self.scene_logger.camera_reopened()
+        else:
+            events += self.scene_logger.start_session(self.source.index, self.source.frame_size)
+        self._disconnect_logged = False
         self._frame_index = 0
         self._detections = []
         self.tracker.reset()
         self._tracks = []
         self.overlay_renderer.reset()
         self._frame_times.clear()
+        return events
 
     def close(self):
+        """Libera a câmera e encerra a sessão do log; devolve os eventos gerados, na ordem do log."""
         self.source.release()
+        events = self._take_pending_events()
+        if self.scene_logger.session_active:
+            events += self.scene_logger.end_session()
+        return events
+
+    def _take_pending_events(self):
+        events, self._pending_events = self._pending_events, []
+        return events
 
     def process_next(self):
         """Lê e processa o próximo frame novo; devolve `FrameResult`, ou `None` se ainda não chegou um.
 
-        Repassa `CameraDisconnectedError` da câmera.
+        Repassa `CameraDisconnectedError` da câmera. A desconexão é registrada no log uma única
+        vez até a próxima abertura, e o evento volta na próxima chamada que devolve eventos:
+        o próximo `FrameResult.events`, `open()` ou `close()`.
         """
-        frame = self.source.read()
+        try:
+            frame = self.source.read()
+        except CameraDisconnectedError as error:
+            if self.scene_logger.session_active and not self._disconnect_logged:
+                self._pending_events += self.scene_logger.camera_disconnected(str(error))
+                self._disconnect_logged = True
+            raise
         if frame is None:
             return None
         motion_boxes = self.motion_detector.detect(frame)
@@ -300,7 +340,11 @@ class FramePipeline:
             detections_updated=detections_updated,
             is_calibrating=self.motion_detector.last_frame_calibrating,
             fps=self.fps,
+            events=[],
         )
+        events = self.scene_logger.update(result)
+        # Pendentes primeiro: foram gravados antes dos registros deste frame.
+        result = result._replace(events=self._take_pending_events() + events)
         result = result._replace(annotated_frame=self.overlay_renderer.render(result))
         self._frame_index += 1
         return result

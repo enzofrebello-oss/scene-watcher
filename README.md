@@ -35,6 +35,8 @@ Se a câmera não abrir, ou parar de entregar frames por mais de `CAMERA_DISCONN
 
 Por padrão, a imagem da câmera é espelhada na horizontal (`CAMERA_MIRROR`), como num espelho: a mão esquerda levantada aparece do lado esquerdo da tela. O espelhamento acontece logo após a captura, antes de qualquer detecção, então as caixas de objetos, rostos e movimento já saem na posição certa sobre a imagem espelhada.
 
+Durante a sessão, o terminal mostra os eventos do [log da sessão](#log-de-sessão), como objetos que aparecem e somem e movimento que começa e para, no formato `14:32:07 [INFO] celular apareceu (0.89)`; a desconexão da câmera aparece como `[ERRO]`. Os registros periódicos ficam só no arquivo.
+
 ## Testes
 
 ```powershell
@@ -86,6 +88,7 @@ A cada frame novo da câmera, o `FramePipeline` (`src/frame_pipeline.py`):
 - roda a detecção de movimento, que é leve;
 - a cada `DETECTION_FRAME_INTERVAL` frames (padrão 5), roda o YOLOv8n e o YuNet e atualiza o `DetectionTracker` com as detecções; nos frames intermediários, as últimas detecções e os objetos rastreados são reaproveitados;
 - calcula o FPS como frames novos processados por segundo, com média móvel dos últimos `FPS_AVERAGE_WINDOW_FRAMES` frames (padrão 30);
+- registra os eventos no log da sessão (`SceneLogger`); os registros gerados no frame vêm em `FrameResult.events`;
 - desenha o overlay numa cópia do frame. O `FrameResult` traz o frame limpo (`frame`) e o desenhado (`annotated_frame`).
 
 Antes de abrir a câmera, os detectores rodam uma vez num frame vazio, para que o primeiro frame real não pague a inicialização dos modelos.
@@ -155,6 +158,72 @@ Na CPU, sem outra carga, o overlay de uma cena com 5 objetos e uma região de mo
 
 - O tracejado de movimento, claro e translúcido, fica pouco visível em cenas muito claras.
 - Cores vizinhas da paleta, como amarelo e lima, ou verde e esmeralda, podem ser confundidas em caixas finas.
+
+## Log de sessão
+
+O `SceneLogger` (`src/scene_logger.py`) grava a sessão em `data/logs/session_log.jsonl`, no formato JSON Lines: uma linha JSON por registro. O arquivo é sobrescrito no início de cada sessão, quando a câmera abre, e cada linha é gravada imediatamente, então o que já foi registrado sobrevive a um travamento. Se o arquivo não puder ser gravado, o app avisa uma vez e a sessão continua sem log em disco. Se o processo terminar de forma abrupta, o arquivo fica sem `session_ended` e sem os sumiços dos objetos que estavam em aberto.
+
+Cada registro gravado também volta para quem usa o pipeline, uma única vez e na mesma ordem do arquivo, na primeira destas chamadas depois de gravado: `FramePipeline.open()` (início da sessão ou, ao reabrir a câmera no meio da sessão, os sumiços com `camera_reopened`), `process_next()` (em `FrameResult.events`) ou `close()` (fim da sessão). A desconexão da câmera é gravada quando `process_next()` levanta `CameraDisconnectedError` e volta na chamada seguinte. Esses eventos são a fonte do feed de eventos, dos alertas e da gravação de clipes da fase 2, então o formato abaixo é estável: uma mudança incompatível muda `format_version`.
+
+### Campos comuns
+
+| Campo | Descrição |
+|---|---|
+| `timestamp` | horário local em ISO 8601, com milissegundos e fuso, por exemplo `2026-09-13T14:32:07.412-03:00` |
+| `type` | tipo do registro, da tabela abaixo |
+
+Chaves e tipos ficam em inglês, e as classes usam o nome original do COCO (`cell phone`) ou `face`, como identificadores estáveis; a tradução da [tabela de classes](#classes-detectadas) só é aplicada na exibição. Confianças e frações têm 3 casas decimais.
+
+### Tipos
+
+| `type` | Quando | Campos |
+|---|---|---|
+| `session_started` | primeira linha, ao abrir a câmera | `format_version` (1), `camera` (índice), `resolution` (`[largura, altura]`) |
+| `object_appeared` | o tracker passou a rastrear um objeto | `class`, `track_id`, `confidence` (da primeira detecção), `class_count` |
+| `object_disappeared` | o objeto deixou de ser rastreado | `class`, `track_id`, `confidence` (última conhecida), `class_count`, `last_seen`, `reason` |
+| `motion_started` | movimento em 3 frames novos seguidos (`MOTION_START_FRAMES`) | nenhum |
+| `motion_stopped` | 1 s sem movimento (`MOTION_STOP_SECONDS`) | nenhum |
+| `summary` | a cada 2 s (`LOG_INTERVAL_SECONDS`) e no encerramento | `classes`, `motion`, `motion_ratio` |
+| `camera_disconnected` | a câmera parou de responder | `message` |
+| `session_ended` | última linha, ao encerrar a sessão | nenhum |
+
+### Eventos de objeto
+
+- Os eventos são por objeto, ou seja, por identidade do tracker, e não por classe: duas pessoas geram dois `object_appeared`.
+- `class_count` é quantos objetos daquela classe continuam rastreados depois do evento. Um `object_appeared` com `class_count` 1 é o primeiro objeto da classe; um `object_disappeared` com `class_count` 0 indica que não restou nenhum.
+- Todo `object_appeared` tem exatamente um `object_disappeared` com o mesmo `track_id`, e `reason` diz o motivo:
+  - `not_redetected`: o tracker removeu o objeto depois de `TRACKER_MAX_MISSED` ciclos sem redetecção. O `timestamp` é o momento da remoção, cerca de 3 s depois de o objeto ter sido visto pela última vez, e `last_seen` é o horário dessa última detecção;
+  - `session_ended`: o objeto ainda estava rastreado quando a sessão terminou;
+  - `camera_reopened`: a câmera foi reaberta no meio da sessão e o tracker recomeçou.
+- Quando um objeto sai e outro da mesma classe entra no mesmo ciclo de detecção, o `object_disappeared` vem antes do `object_appeared`.
+- Classes ocultas no overlay (`person`) aparecem normalmente no log.
+- Enquanto a troca de classe do YOLO sobre o mesmo objeto físico não for tratada (etapa 12), cada troca gera um par de eventos a mais.
+
+### Registro periódico
+
+- `classes`: para cada classe com objetos rastreados no momento, em ordem alfabética, `count` (inclusive os que estão esmaecendo sem redetecção) e `avg_confidence` (média da última confiança conhecida desses objetos).
+- `motion`: se algum frame da janela teve movimento; `motion_ratio`: fração dos frames da janela com movimento. Frames em calibração do fundo não entram na conta; se a janela inteira foi de calibração, os dois ficam `null`.
+- Os registros seguem uma agenda fixa a partir do início da sessão, mas só são avaliados quando chega um frame novo: cada um sai no primeiro frame depois do horário agendado, com atraso de até um frame, e com a câmera travada (só frames repetidos) nenhum registro sai até a imagem mudar. O mesmo vale para `motion_started` e `motion_stopped`. No encerramento, um último registro cobre a janela incompleta, se algum frame chegou nela.
+
+### Exemplo
+
+Uma sessão curta completa, gerada pelo `SceneLogger` a 16 frames novos por segundo: o rosto aparece no início, o celular aparece e deixa de ser detectado em 1,6 s e é removido cerca de 3,4 s depois, há movimento entre 2,2 s e 3,8 s, e a sessão é encerrada no meio de uma janela de 2 s.
+
+```json
+{"timestamp": "2026-09-13T14:32:00.004-03:00", "type": "session_started", "format_version": 1, "camera": 0, "resolution": [1280, 720]}
+{"timestamp": "2026-09-13T14:32:00.066-03:00", "type": "object_appeared", "class": "face", "track_id": 1, "confidence": 0.941, "class_count": 1}
+{"timestamp": "2026-09-13T14:32:00.691-03:00", "type": "object_appeared", "class": "cell phone", "track_id": 2, "confidence": 0.891, "class_count": 1}
+{"timestamp": "2026-09-13T14:32:02.004-03:00", "type": "summary", "classes": {"cell phone": {"count": 1, "avg_confidence": 0.874}, "face": {"count": 1, "avg_confidence": 0.941}}, "motion": false, "motion_ratio": 0.0}
+{"timestamp": "2026-09-13T14:32:02.316-03:00", "type": "motion_started"}
+{"timestamp": "2026-09-13T14:32:04.004-03:00", "type": "summary", "classes": {"cell phone": {"count": 1, "avg_confidence": 0.874}, "face": {"count": 1, "avg_confidence": 0.941}}, "motion": true, "motion_ratio": 0.812}
+{"timestamp": "2026-09-13T14:32:04.754-03:00", "type": "motion_stopped"}
+{"timestamp": "2026-09-13T14:32:05.066-03:00", "type": "object_disappeared", "class": "cell phone", "track_id": 2, "confidence": 0.874, "class_count": 0, "last_seen": "2026-09-13T14:32:01.629-03:00", "reason": "not_redetected"}
+{"timestamp": "2026-09-13T14:32:05.629-03:00", "type": "summary", "classes": {"face": {"count": 1, "avg_confidence": 0.941}}, "motion": false, "motion_ratio": 0.0}
+{"timestamp": "2026-09-13T14:32:05.629-03:00", "type": "object_disappeared", "class": "face", "track_id": 1, "confidence": 0.941, "class_count": 0, "last_seen": "2026-09-13T14:32:05.379-03:00", "reason": "session_ended"}
+{"timestamp": "2026-09-13T14:32:05.629-03:00", "type": "session_ended"}
+```
+
+No modo terminal, os eventos de objeto e de movimento aparecem como `14:32:07 [INFO] celular apareceu (0.89)`, e a desconexão da câmera como `[ERRO]`, no stderr. Início e fim de sessão já têm mensagens próprias no terminal e não são repetidos, e os registros periódicos ficam só no arquivo.
 
 ## Classes detectadas
 
