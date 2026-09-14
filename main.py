@@ -42,14 +42,15 @@ def run_terminal():
         print(f"erro: {e}", file=sys.stderr)
         return 1
 
-    width, height = pipeline.source.frame_size
-    print(
-        f"câmera {pipeline.source.index} aberta em {width}x{height}. "
-        "pressione q ou ESC na janela para sair, ou Ctrl+C no terminal"
-    )
-    print_events(opening_events)
-    cv2.namedWindow(WINDOW_TITLE, cv2.WINDOW_NORMAL | cv2.WINDOW_KEEPRATIO)
+    # A sessão do log começou em open(): daqui em diante, toda saída passa pelo close().
     try:
+        width, height = pipeline.source.frame_size
+        print(
+            f"câmera {pipeline.source.index} aberta em {width}x{height}. "
+            "pressione q ou ESC na janela para sair, ou Ctrl+C no terminal"
+        )
+        print_events(opening_events)
+        cv2.namedWindow(WINDOW_TITLE, cv2.WINDOW_NORMAL | cv2.WINDOW_KEEPRATIO)
         while True:
             result = pipeline.process_next()
             if result is not None:
