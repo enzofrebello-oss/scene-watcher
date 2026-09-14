@@ -5,7 +5,7 @@ import sys
 import cv2
 
 from src.frame_pipeline import CameraDisconnectedError, CameraOpenError, FramePipeline
-from src.scene_logger import SESSION_ENDED, SESSION_STARTED, event_level, terminal_line
+from src.scene_logger import SESSION_ENDED, SESSION_STARTED, event_level, session_summary_lines, terminal_line
 from src.utils.model_files import ModelUnavailableError
 
 WINDOW_TITLE = "Scene Watcher"
@@ -26,6 +26,15 @@ def print_events(events):
             print(line, file=sys.stderr if event_level(event) == "ERRO" else sys.stdout)
 
 
+def print_session_summary(events):
+    """Imprime o resumo da sessão a partir do `session_ended` entre os eventos; sem ele, não imprime nada."""
+    for event in events:
+        if event.type == SESSION_ENDED:
+            print()
+            for line in session_summary_lines(event):
+                print(line)
+
+
 def run_terminal():
     """Modo terminal: janela simples do OpenCV com o overlay. Devolve o código de saída do processo."""
     print("carregando modelos...")
@@ -42,6 +51,7 @@ def run_terminal():
         print(f"erro: {e}", file=sys.stderr)
         return 1
 
+    exit_code = 0
     # A sessão do log começou em open(): daqui em diante, toda saída passa pelo close().
     try:
         width, height = pipeline.source.frame_size
@@ -63,15 +73,19 @@ def run_terminal():
                 break
     except CameraDisconnectedError:
         # A mensagem sai como evento [ERRO], impresso junto com o encerramento da sessão abaixo.
-        return 1
+        exit_code = 1
     except KeyboardInterrupt:
         pass
     finally:
-        print_events(pipeline.close())
+        closing_events = pipeline.close()
+        print_events(closing_events)
         cv2.destroyAllWindows()
 
-    print("sessão encerrada, câmera liberada")
-    return 0
+    # Numa exceção inesperada, o close() acima já rodou, mas nada daqui sai: o traceback fica limpo.
+    if exit_code == 0:
+        print("sessão encerrada, câmera liberada")
+    print_session_summary(closing_events)
+    return exit_code
 
 
 def main():

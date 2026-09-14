@@ -35,7 +35,7 @@ Se a câmera não abrir, ou parar de entregar frames por mais de `CAMERA_DISCONN
 
 Por padrão, a imagem da câmera é espelhada na horizontal (`CAMERA_MIRROR`), como num espelho: a mão esquerda levantada aparece do lado esquerdo da tela. O espelhamento acontece logo após a captura, antes de qualquer detecção, então as caixas de objetos, rostos e movimento já saem na posição certa sobre a imagem espelhada.
 
-Durante a sessão, o terminal mostra os eventos do [log da sessão](#log-de-sessão), como objetos que aparecem e somem e movimento que começa e para, no formato `14:32:07 [INFO] celular apareceu (0.89)`; a desconexão da câmera aparece como `[ERRO]`. Os registros periódicos ficam só no arquivo.
+Durante a sessão, o terminal mostra os eventos do [log da sessão](#log-de-sessão), como objetos que aparecem e somem e movimento que começa e para, no formato `14:32:07 [INFO] celular apareceu (0.89)`; a desconexão da câmera aparece como `[ERRO]`. Os registros periódicos ficam só no arquivo. Ao sair, o terminal mostra o [resumo da sessão](#resumo-da-sessão): duração, percentual de movimento e classes vistas.
 
 ## Testes
 
@@ -172,7 +172,7 @@ Cada registro gravado também volta para quem usa o pipeline, uma única vez e n
 | `timestamp` | horário local em ISO 8601, com milissegundos e fuso, por exemplo `2026-09-13T14:32:07.412-03:00` |
 | `type` | tipo do registro, da tabela abaixo |
 
-Chaves e tipos ficam em inglês, e as classes usam o nome original do COCO (`cell phone`) ou `face`, como identificadores estáveis; a tradução da [tabela de classes](#classes-detectadas) só é aplicada na exibição. Confianças e frações têm 3 casas decimais.
+Chaves e tipos ficam em inglês, e as classes usam o nome original do COCO (`cell phone`) ou `face`, como identificadores estáveis; a tradução da [tabela de classes](#classes-detectadas) só é aplicada na exibição. Confianças, frações e segundos têm 3 casas decimais.
 
 ### Tipos
 
@@ -183,9 +183,9 @@ Chaves e tipos ficam em inglês, e as classes usam o nome original do COCO (`cel
 | `object_disappeared` | o objeto deixou de ser rastreado | `class`, `track_id`, `confidence` (última conhecida), `class_count`, `last_seen`, `reason` |
 | `motion_started` | movimento em 3 frames novos seguidos (`MOTION_START_FRAMES`) | nenhum |
 | `motion_stopped` | 1 s sem movimento (`MOTION_STOP_SECONDS`) | nenhum |
-| `summary` | a cada 2 s (`LOG_INTERVAL_SECONDS`) e no encerramento | `classes`, `motion`, `motion_ratio` |
+| `summary` | a cada 2 s (`LOG_INTERVAL_SECONDS`) e no encerramento | `classes`, `motion`, `motion_ratio`, `frames_observed`, `frames_with_motion` |
 | `camera_disconnected` | a câmera parou de responder | `message` |
-| `session_ended` | última linha, ao encerrar a sessão | nenhum |
+| `session_ended` | última linha, ao encerrar a sessão | totais da sessão: `duration_seconds`, `frames`, `frames_observed`, `frames_with_motion`, `motion_ratio`, `classes_seen` (ver [resumo da sessão](#resumo-da-sessão)) |
 
 ### Eventos de objeto
 
@@ -203,27 +203,64 @@ Chaves e tipos ficam em inglês, e as classes usam o nome original do COCO (`cel
 
 - `classes`: para cada classe com objetos rastreados no momento, em ordem alfabética, `count` (inclusive os que estão esmaecendo sem redetecção) e `avg_confidence` (média da última confiança conhecida desses objetos).
 - `motion`: se algum frame da janela teve movimento; `motion_ratio`: fração dos frames da janela com movimento. Frames em calibração do fundo não entram na conta; se a janela inteira foi de calibração, os dois ficam `null`.
+- `frames_observed`: frames da janela fora da calibração; `frames_with_motion`: quantos deles tiveram movimento. `motion_ratio` é a razão entre os dois. Todo frame novo entra em exatamente um registro periódico, então a fração de um período maior (um minuto, a sessão inteira) sai exata somando os contadores dos registros, sem depender de médias de frações arredondadas.
 - Os registros seguem uma agenda fixa a partir do início da sessão, mas só são avaliados quando chega um frame novo: cada um sai no primeiro frame depois do horário agendado, com atraso de até um frame, e com a câmera travada (só frames repetidos) nenhum registro sai até a imagem mudar. O mesmo vale para `motion_started` e `motion_stopped`. No encerramento, um último registro cobre a janela incompleta, se algum frame chegou nela.
+
+### Resumo da sessão
+
+O `session_ended` traz os totais da sessão, a fonte do resumo mostrado ao encerrar: no terminal agora e, na fase 2, no diálogo de resumo.
+
+| Campo | Descrição |
+|---|---|
+| `duration_seconds` | tempo entre o início e o fim da sessão. Inclui o tempo até a primeira imagem, a calibração do fundo, trechos em que a câmera só repete o mesmo frame e a espera de `CAMERA_DISCONNECT_TIMEOUT_SECONDS` antes de uma desconexão; o carregamento dos modelos fica de fora |
+| `frames` | frames novos processados na sessão |
+| `frames_observed`, `frames_with_motion`, `motion_ratio` | como no registro periódico, para a sessão inteira; os dois contadores são as somas dos registros periódicos |
+| `classes_seen` | para cada classe que apareceu na sessão, em ordem alfabética: `first_seen`, `visible_seconds`, `max_simultaneous` e `appearances` |
+
+- `first_seen`: horário do primeiro `object_appeared` da classe.
+- `visible_seconds`: união dos intervalos entre o `object_appeared` e o `last_seen` de cada objeto da classe, então objetos que coexistem no tempo contam uma vez. Pode ser recalculado exatamente a partir dos eventos de objeto do log, porque os intervalos usam a mesma precisão de milissegundos com que o arquivo grava os horários. Um objeto detectado num único ciclo soma 0 s, e os ciclos sem redetecção entre duas detecções do mesmo objeto contam como visíveis. É o número que separa um objeto presente na sessão inteira de um falso positivo de um ciclo. Como os intervalos usam o horário do sistema, um ajuste do relógio no meio da sessão (por exemplo, uma sincronização de horário) distorce o tempo visível, que nunca fica negativo; a duração não é afetada, porque usa um relógio monotônico.
+- `max_simultaneous`: o maior número de objetos da classe redetectados num mesmo ciclo de detecção. Objetos mantidos sem redetecção não contam: quando o tracker dá uma identidade nova a um objeto que se moveu rápido, a antiga continua rastreada por alguns ciclos, e contá-la faria um único rosto aparecer como dois. Por isso pode ser menor que a contagem do painel do overlay e que o `count` do registro periódico, que incluem os objetos esmaecendo.
+- `appearances`: número de `object_appeared` da classe, ou seja, de identidades do tracker. Enquanto as trocas de identidade e de classe não forem tratadas (etapa 12), ele cresce a cada troca e a cada reabertura da câmera e não equivale ao número de objetos físicos; por isso não aparece no resumo do terminal.
+- Só entram detecções acima dos limiares dos detectores (`CONFIDENCE_THRESHOLD`, padrão 0,5, para objetos e `FACE_SCORE_THRESHOLD`, padrão 0,8, para rostos).
+- O percentual de movimento conta todo frame analisado com alguma região em movimento, enquanto `motion_started` e `motion_stopped` esperam 3 frames seguidos e 1 s parado: frames soltos com movimento entram no percentual sem gerar `motion_started`. Frames repetidos (câmera travada, lente tampada) não entram na conta.
+
+No modo terminal, o resumo é impresso ao sair com `q`, `ESC`, fechando a janela ou com `Ctrl+C`, depois de "sessão encerrada, câmera liberada", e quando a câmera é desconectada, depois do `[ERRO]`. Numa falha inesperada, a sessão é encerrada no log, mas o resumo não é impresso, para não se misturar ao traceback.
+
+```text
+resumo da sessão
+  duração      00:07:32
+  movimento    23% dos 4812 frames analisados
+  classes      4
+    rosto            máx. 1   visível 00:06:58
+    pessoa           máx. 1   visível 00:07:01
+    celular          máx. 1   visível 00:01:12
+    controle remoto  máx. 1   visível <1 s
+```
+
+- As classes saem traduzidas e em ordem de primeira aparição; `person` aparece como "pessoa", embora fique oculta no overlay.
+- A duração e o tempo visível descartam a fração de segundo; um tempo visível abaixo de 1 s aparece como `<1 s`.
+- O percentual é arredondado, mas nunca mostra 0% quando algum frame teve movimento (`<1%`) nem 100% quando algum frame não teve (`>99%`).
+- Sem nenhum frame processado (por exemplo, a câmera em uso por outro aplicativo), o resumo diz "nenhuma imagem recebida da câmera"; com frames, mas sem objetos, "nenhum objeto detectado na sessão"; e se a sessão terminou antes do fim da calibração do fundo, o movimento aparece como "sem dados, fundo ainda em calibração".
 
 ### Exemplo
 
-Uma sessão curta completa, gerada pelo `SceneLogger` a 16 frames novos por segundo: o rosto aparece no início, o celular aparece e deixa de ser detectado em 1,6 s e é removido cerca de 3,4 s depois, há movimento entre 2,2 s e 3,8 s, e a sessão é encerrada no meio de uma janela de 2 s.
+Uma sessão curta completa, gerada pelo `SceneLogger` a 16 frames novos por segundo: o rosto aparece no início, o celular aparece e deixa de ser detectado em 1,6 s e é removido cerca de 3,4 s depois, há movimento entre 2,2 s e 3,8 s, e a sessão é encerrada no meio de uma janela de 2 s. Os primeiros 30 frames são de calibração do fundo, então os contadores dos registros periódicos somam os 60 frames analisados do `session_ended`.
 
 ```json
 {"timestamp": "2026-09-13T14:32:00.004-03:00", "type": "session_started", "format_version": 1, "camera": 0, "resolution": [1280, 720]}
 {"timestamp": "2026-09-13T14:32:00.066-03:00", "type": "object_appeared", "class": "face", "track_id": 1, "confidence": 0.941, "class_count": 1}
 {"timestamp": "2026-09-13T14:32:00.691-03:00", "type": "object_appeared", "class": "cell phone", "track_id": 2, "confidence": 0.891, "class_count": 1}
-{"timestamp": "2026-09-13T14:32:02.004-03:00", "type": "summary", "classes": {"cell phone": {"count": 1, "avg_confidence": 0.874}, "face": {"count": 1, "avg_confidence": 0.941}}, "motion": false, "motion_ratio": 0.0}
+{"timestamp": "2026-09-13T14:32:02.004-03:00", "type": "summary", "classes": {"cell phone": {"count": 1, "avg_confidence": 0.874}, "face": {"count": 1, "avg_confidence": 0.941}}, "motion": false, "motion_ratio": 0.0, "frames_observed": 2, "frames_with_motion": 0}
 {"timestamp": "2026-09-13T14:32:02.316-03:00", "type": "motion_started"}
-{"timestamp": "2026-09-13T14:32:04.004-03:00", "type": "summary", "classes": {"cell phone": {"count": 1, "avg_confidence": 0.874}, "face": {"count": 1, "avg_confidence": 0.941}}, "motion": true, "motion_ratio": 0.812}
+{"timestamp": "2026-09-13T14:32:04.004-03:00", "type": "summary", "classes": {"cell phone": {"count": 1, "avg_confidence": 0.874}, "face": {"count": 1, "avg_confidence": 0.941}}, "motion": true, "motion_ratio": 0.812, "frames_observed": 32, "frames_with_motion": 26}
 {"timestamp": "2026-09-13T14:32:04.754-03:00", "type": "motion_stopped"}
 {"timestamp": "2026-09-13T14:32:05.066-03:00", "type": "object_disappeared", "class": "cell phone", "track_id": 2, "confidence": 0.874, "class_count": 0, "last_seen": "2026-09-13T14:32:01.629-03:00", "reason": "not_redetected"}
-{"timestamp": "2026-09-13T14:32:05.629-03:00", "type": "summary", "classes": {"face": {"count": 1, "avg_confidence": 0.941}}, "motion": false, "motion_ratio": 0.0}
+{"timestamp": "2026-09-13T14:32:05.629-03:00", "type": "summary", "classes": {"face": {"count": 1, "avg_confidence": 0.941}}, "motion": false, "motion_ratio": 0.0, "frames_observed": 26, "frames_with_motion": 0}
 {"timestamp": "2026-09-13T14:32:05.629-03:00", "type": "object_disappeared", "class": "face", "track_id": 1, "confidence": 0.941, "class_count": 0, "last_seen": "2026-09-13T14:32:05.379-03:00", "reason": "session_ended"}
-{"timestamp": "2026-09-13T14:32:05.629-03:00", "type": "session_ended"}
+{"timestamp": "2026-09-13T14:32:05.629-03:00", "type": "session_ended", "duration_seconds": 5.625, "frames": 90, "frames_observed": 60, "frames_with_motion": 26, "motion_ratio": 0.433, "classes_seen": {"cell phone": {"first_seen": "2026-09-13T14:32:00.691-03:00", "visible_seconds": 0.938, "max_simultaneous": 1, "appearances": 1}, "face": {"first_seen": "2026-09-13T14:32:00.066-03:00", "visible_seconds": 5.313, "max_simultaneous": 1, "appearances": 1}}}
 ```
 
-No modo terminal, os eventos de objeto e de movimento aparecem como `14:32:07 [INFO] celular apareceu (0.89)`, e a desconexão da câmera como `[ERRO]`, no stderr. Início e fim de sessão já têm mensagens próprias no terminal e não são repetidos, e os registros periódicos ficam só no arquivo.
+No modo terminal, os eventos de objeto e de movimento aparecem como `14:32:07 [INFO] celular apareceu (0.89)`, e a desconexão da câmera como `[ERRO]`, no stderr. Início e fim de sessão não aparecem como eventos: a abertura da câmera já tem mensagem própria, e o fim da sessão aparece como o [resumo da sessão](#resumo-da-sessão). Os registros periódicos ficam só no arquivo.
 
 ## Classes detectadas
 
